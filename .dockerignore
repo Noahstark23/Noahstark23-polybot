@@ -1,0 +1,27 @@
+# Secrets — NUNCA dentro de la imagen
+.env
+*.pem
+*.key
+secrets/
+config/*_key*
+poly_wallet_key*
+
+# Data / logs
+data/
+logs/
+*.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Repo
+.git/
+.github/
+docs/
+*.md

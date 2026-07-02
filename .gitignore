@@ -1,0 +1,21 @@
+# Secrets — NUNCA commitear
+.env
+*.pem
+*.key
+secrets/
+config/*_key*
+poly_wallet_key*
+
+# Data / logs
+data/
+logs/
+*.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
