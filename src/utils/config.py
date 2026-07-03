@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     # === Motores / servicios ===
     MOTOR_1_ARBITRAGE_ENABLED: bool = True  # en F2 corre en SHADOW aunque esté true
     DATA_CAPTURE_ENABLED: bool = True
+    ANALYST_ENABLED: bool = True  # analyst_loop (§7) — veredicto diario
     # Lista de condition_ids a observar (CSV). Vacío => descubrir vía get_markets.
     WATCHED_CONDITION_IDS: str = ""
     MAX_WATCHED_MARKETS: int = Field(20, gt=0, le=200)

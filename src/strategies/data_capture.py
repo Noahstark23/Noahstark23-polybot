@@ -225,6 +225,9 @@ class DataCaptureService:
 
 
 def create_service():
-    """Factory para el runner. Devuelve la corutina del servicio."""
+    """Factory para el runner. Publica la instancia en el registry compartido."""
+    from src.marketdata import registry
+
     service = DataCaptureService()
+    registry.set_capture(service)
     return service.run
