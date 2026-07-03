@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     # Sólo dirección pública y RUTA al keystore (secret volume). Nunca la key.
     POLY_WALLET_ADDRESS: str = "0x0000000000000000000000000000000000000000"
     POLY_SIGNER_KEY_PATH: Path | None = None
+    # Password del keystore cifrado (si el secret volume trae JSON keystore)
+    POLY_KEYSTORE_PASSWORD: str = ""
     # Credenciales L2 del CLOB (se derivan de la firma del wallet en F1)
     CLOB_API_KEY: str = ""
     CLOB_SECRET: str = ""
