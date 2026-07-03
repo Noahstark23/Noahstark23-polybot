@@ -167,6 +167,21 @@ class ArbitrageEngine:
         windows = [e.edge_window for e in evaluations if e.edge_window is not None]
         recorded = [w for w in windows if w.status == "shadow_recorded"]
 
+        # Oportunidades ejecutables (sólo las usa el Executor en F3; en shadow
+        # el executor es None y esta lista muere acá)
+        executable = [
+            {
+                "condition_id": w.condition_id,
+                "token_id_yes": w.token_id_yes,
+                "token_id_no": w.token_id_no,
+                "ask_yes": w.best_ask_yes,
+                "ask_no": w.best_ask_no,
+                "size_contracts": w.theoretical_size,
+                "net_edge_pct": w.net_edge_pct,
+            }
+            for w in recorded
+        ]
+
         cycle_ts = utc_now()
         funnel = FunnelSnapshot(
             cycle_ts=cycle_ts,
@@ -195,6 +210,7 @@ class ArbitrageEngine:
             "edges_detected": len(windows),
             "edges_recorded": len(recorded),
             "skips": skips,
+            "executable": executable,
         }
 
     # ==================================================
@@ -210,7 +226,14 @@ class ArbitrageEngine:
             try:
                 summary = self.tick()
                 if summary["edges_recorded"]:
-                    logger.info(f"Tick: {summary}")
+                    logger.info(
+                        f"Tick: evaluados={summary['markets_evaluated']} "
+                        f"recorded={summary['edges_recorded']} skips={summary['skips']}"
+                    )
+                # F3: sólo si el runner inyectó el executor (trading + NO-GO verde)
+                if self.executor is not None:
+                    for opp in summary["executable"]:
+                        await self.executor.execute(opp)
             except Exception:
                 logger.exception("Error en tick del motor 1 (sigo)")
             try:
@@ -223,6 +246,16 @@ class ArbitrageEngine:
 
 
 def create_service():
-    """Factory para el runner."""
-    engine = ArbitrageEngine()
+    """
+    Factory para el runner. El executor SOLO se inyecta si el humano encendió
+    trading Y el runner no forzó shadow (checklist NO-GO verde). En cualquier
+    otro caso el motor corre en shadow puro.
+    """
+    settings = get_settings()
+    engine = ArbitrageEngine(settings)
+    if settings.TRADING_ENABLED and not BotState.shadow_mode:
+        from src.motor_1_arbitrage.executor import ArbExecutor
+
+        engine.executor = ArbExecutor(settings, risk=engine.risk)
+        logger.warning("⚡ Executor F3 ACTIVO — trading real habilitado por el humano")
     return engine.run
