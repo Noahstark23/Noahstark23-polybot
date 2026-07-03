@@ -3,11 +3,21 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: sqlite:///./data/polybot.db
+      LOGS_DIR: ./logs
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -e ".[dev]"
-      - run: ruff check src/ tests/
+      - run: ruff check src/ tests/ scripts/
       - run: pytest -q
       - run: python -m scripts.smoke_test
+      - run: python -m scripts.check_no_go
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t polybot:ci .
