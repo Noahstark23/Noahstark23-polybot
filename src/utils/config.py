@@ -15,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Cotas superiores hardcoded de riesgo (heredadas del bot Kalshi, NO diluir).
@@ -44,6 +44,37 @@ class Settings(BaseSettings):
     POLYGON_CHAIN_ID: int = 137
     CLOB_API_URL: str = "https://clob.polymarket.com"
     CLOB_WS_URL: str = "wss://ws-subscriptions-clob.polymarket.com"
+
+    @field_validator("CLOB_API_URL", mode="before")
+    @classmethod
+    def _normalize_api_url(cls, v: str) -> str:
+        """
+        Tolera el typo clásico del panel de env vars: URL sin esquema
+        ("clob.polymarket.com") — httpx lanza UnsupportedProtocol y el data
+        capture muere en loop. Se normaliza a https:// y se valida acá,
+        fail-fast en el boot en lugar de fallar en runtime.
+        """
+        v = str(v).strip().rstrip("/")
+        if not v:
+            raise ValueError("CLOB_API_URL vacío")
+        if v.startswith(("ws://", "wss://")):
+            raise ValueError(f"CLOB_API_URL es el endpoint REST, no el WS: {v}")
+        if not v.startswith(("http://", "https://")):
+            v = f"https://{v}"
+        return v
+
+    @field_validator("CLOB_WS_URL", mode="before")
+    @classmethod
+    def _normalize_ws_url(cls, v: str) -> str:
+        """Idéntico para el WS: sin esquema -> wss://; http(s):// es error."""
+        v = str(v).strip().rstrip("/")
+        if not v:
+            raise ValueError("CLOB_WS_URL vacío")
+        if v.startswith(("http://", "https://")):
+            raise ValueError(f"CLOB_WS_URL es el endpoint WS, no el REST: {v}")
+        if not v.startswith(("ws://", "wss://")):
+            v = f"wss://{v}"
+        return v
 
     # === Auth EVM (Polygon) ===
     # Sólo dirección pública y RUTA al keystore (secret volume). Nunca la key.

@@ -114,6 +114,39 @@ class TestEnvInvalido:
             _make(LOG_LEVEL="TRACE")
 
 
+class TestNormalizacionUrls:
+    """Regresión del bug del deploy 2026-07-03: CLOB_API_URL sin esquema en
+    Coolify -> httpx UnsupportedProtocol -> data_capture en crash-loop."""
+
+    def test_api_url_sin_esquema_se_normaliza(self):
+        s = _make(CLOB_API_URL="clob.polymarket.com")
+        assert s.CLOB_API_URL == "https://clob.polymarket.com"
+
+    def test_api_url_con_esquema_queda_igual(self):
+        s = _make(CLOB_API_URL="https://clob.polymarket.com")
+        assert s.CLOB_API_URL == "https://clob.polymarket.com"
+
+    def test_api_url_barra_final_se_limpia(self):
+        s = _make(CLOB_API_URL="https://clob.polymarket.com/")
+        assert s.CLOB_API_URL == "https://clob.polymarket.com"
+
+    def test_api_url_vacia_falla(self):
+        with pytest.raises(ValidationError):
+            _make(CLOB_API_URL="  ")
+
+    def test_api_url_con_wss_falla(self):
+        with pytest.raises(ValidationError, match="REST"):
+            _make(CLOB_API_URL="wss://clob.polymarket.com")
+
+    def test_ws_url_sin_esquema_se_normaliza(self):
+        s = _make(CLOB_WS_URL="ws-subscriptions-clob.polymarket.com")
+        assert s.CLOB_WS_URL == "wss://ws-subscriptions-clob.polymarket.com"
+
+    def test_ws_url_con_https_falla(self):
+        with pytest.raises(ValidationError, match="WS"):
+            _make(CLOB_WS_URL="https://ws-subscriptions-clob.polymarket.com")
+
+
 class TestHelpers:
     def test_singleton(self, isolated_env):
         a = config_module.get_settings()
