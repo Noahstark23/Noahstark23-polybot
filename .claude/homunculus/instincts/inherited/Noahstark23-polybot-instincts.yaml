@@ -1,0 +1,499 @@
+# Instincts generated from https://github.com/Noahstark23/Noahstark23-polybot
+# Generated: 2026-07-03T04:55:40.498Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: Noahstark23-polybot-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Commit Length
+
+## Action
+
+Write moderate-length commit messages (~78 characters)
+
+## Evidence
+
+- Average commit message length: 78 chars
+- Based on 5 commits
+
+---
+id: Noahstark23-polybot-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Naming Files
+
+## Action
+
+Use snake_case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: snake_case
+
+---
+id: Noahstark23-polybot-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: Noahstark23-polybot-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: Noahstark23-polybot-arch-type-based
+trigger: "when adding new code"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: https://github.com/Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Arch Type Based
+
+## Action
+
+Place code in the appropriate type folder (components/, services/, utils/, etc.)
+
+## Evidence
+
+- Type-based module organization detected
+- Folders: analytics, api, auth, clients, db
+
+---
+id: Noahstark23-polybot-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: Noahstark23-polybot-test-naming
+trigger: "when creating a test file"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Test Naming
+
+## Action
+
+Name test files using the pattern: *.test.ts
+
+## Evidence
+
+- File pattern: *.test.ts
+- Consistent across test files
+
+---
+id: Noahstark23-polybot-workflow-feature-gate-implementation
+trigger: "when doing feature gate implementation"
+confidence: 0.55
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Workflow Feature Gate Implementation
+
+## Action
+
+Follow the feature-gate-implementation workflow:
+1. Create or update main implementation modules under src/ (e.g., new engine, service, or manager).
+2. Update or add configuration logic in src/utils/config.py.
+3. Add or update related database models or registry files if needed.
+4. Write or update supporting scripts or monitoring/analytics modules.
+5. Add or update corresponding tests under tests/ (unit and integration).
+6. Update runner or service registration logic if the new feature requires orchestration.
+7. Ensure ruff/lint passes.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~1x per month
+- Files: src/*/*.py, src/utils/config.py, src/runner.py
+
+---
+id: Noahstark23-polybot-workflow-test-driven-module-extension
+trigger: "when doing test driven module extension"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Workflow Test Driven Module Extension
+
+## Action
+
+Follow the test-driven-module-extension workflow:
+1. Create or update a module under src/ (e.g., src/clients/, src/analytics/, src/monitoring/).
+2. Add or update corresponding test files under tests/.
+3. If needed, update configuration or registry files.
+4. Run tests and ensure linter passes.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/*/*.py, tests/test_*.py
+
+---
+id: Noahstark23-polybot-workflow-operational-script-and-checklist-update
+trigger: "when doing operational script and checklist update"
+confidence: 0.55
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Workflow Operational Script And Checklist Update
+
+## Action
+
+Follow the operational-script-and-checklist-update workflow:
+1. Create or update scripts under scripts/ (e.g., smoke_test.py, check_no_go.py, clear_kill_switch.py).
+2. Update or add checklist documentation (e.g., docs/handoff/LATEST.md).
+3. If needed, update CI/CD workflow files to include new checks.
+4. Test scripts locally and in CI.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~1x per month
+- Files: scripts/*.py, docs/handoff/LATEST.md, .github/workflows/ci.yml
+
+---
+id: noahstark23-polybot-instinct-file-naming
+trigger: "When creating or renaming a file in the codebase"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct File Naming
+
+## Action
+
+Use snake_case for file names
+
+## Evidence
+
+- Pattern in src/ folder structure
+- Naming conventions specified in analysis
+
+---
+id: noahstark23-polybot-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Function Naming
+
+## Action
+
+Use camelCase for function names
+
+## Evidence
+
+- Naming conventions specified in analysis
+
+---
+id: noahstark23-polybot-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Class Naming
+
+## Action
+
+Use PascalCase for class names
+
+## Evidence
+
+- Naming conventions specified in analysis
+
+---
+id: noahstark23-polybot-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names
+
+## Evidence
+
+- Naming conventions specified in analysis
+
+---
+id: noahstark23-polybot-instinct-import-style
+trigger: "When importing modules in Python files"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Import Style
+
+## Action
+
+Use relative imports
+
+## Evidence
+
+- Import style specified in analysis
+
+---
+id: noahstark23-polybot-instinct-export-style
+trigger: "When exporting functions or classes from a module"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Export style specified in analysis
+
+---
+id: noahstark23-polybot-instinct-test-location
+trigger: "When adding or updating tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Test Location
+
+## Action
+
+Place tests in the separate tests/ directory, using the pattern tests/test_*.py
+
+## Evidence
+
+- testLocation: separate
+- Pattern in tests/test_*.py
+
+---
+id: noahstark23-polybot-instinct-test-type
+trigger: "When writing tests for a module"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Test Type
+
+## Action
+
+Write unit tests for each new or updated module
+
+## Evidence
+
+- testTypes: unit
+- test-driven-module-extension workflow
+
+---
+id: noahstark23-polybot-instinct-test-pattern
+trigger: "When naming test files"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Test Pattern
+
+## Action
+
+Use the pattern test_*.py for test files
+
+## Evidence
+
+- filePattern: *.test.ts (adapted to Python: test_*.py)
+- tests/test_*.py in workflow examples
+
+---
+id: noahstark23-polybot-instinct-commit-prefix
+trigger: "When making a commit"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Commit Prefix
+
+## Action
+
+Prefix commit messages with F0, F1, F2, or F3 to indicate feature gates, or use descriptive freeform prefixes for other changes
+
+## Evidence
+
+- Seen in commit examples: 'F0: ...', 'F1: ...', 'F2: ...', 'F3 ...'
+- commit format in analysis
+
+---
+id: noahstark23-polybot-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Commit Length
+
+## Action
+
+Write concise commit messages averaging around 78 characters
+
+## Evidence
+
+- averageLength: 78
+- Pattern in commit examples
+
+---
+id: noahstark23-polybot-instinct-feature-gate-workflow
+trigger: "When a new milestone or functional gate is being developed and integrated (e.g., F1: auth, F2: arbitrage, F3: execution)"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Feature Gate Workflow
+
+## Action
+
+Follow the feature-gate-implementation workflow: update core modules, config, tests, runner, and ensure lint passes
+
+## Evidence
+
+- feature-gate-implementation workflow
+- commit sequence and files involved
+
+---
+id: noahstark23-polybot-instinct-module-extension-workflow
+trigger: "When extending system capabilities (e.g., adding a new client, analytics, or monitoring module)"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Module Extension Workflow
+
+## Action
+
+Follow the test-driven-module-extension workflow: update/add module, add/update tests, update config if needed, run tests and linter
+
+## Evidence
+
+- test-driven-module-extension workflow
+- commit sequence and files involved
+
+---
+id: noahstark23-polybot-instinct-ops-script-workflow
+trigger: "When operational requirements change or new deployment gates/checks are needed"
+confidence: 0.85
+domain: workflow
+source: repo-analysis
+source_repo: Noahstark23/Noahstark23-polybot
+---
+
+# Noahstark23 Polybot Instinct Ops Script Workflow
+
+## Action
+
+Follow the operational-script-and-checklist-update workflow: update scripts, checklist docs, CI workflow, and test scripts locally and in CI
+
+## Evidence
+
+- operational-script-and-checklist-update workflow
+- commit sequence and files involved
+
