@@ -1,0 +1,6 @@
+interface:
+  display_name: "Noahstark23 Polybot"
+  short_description: "Repo-specific patterns and workflows for Noahstark23-polybot"
+  default_prompt: "Use the Noahstark23-polybot repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
