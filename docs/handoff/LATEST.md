@@ -1,60 +1,64 @@
 # HANDOFF — Estado del proyecto
 
-Fase activa: **F0 — Scaffold & Discovery** (gate F0→F1 parcialmente verde;
-lo que falta requiere el deploy en Coolify, no más código).
+Fase activa: **F0 cerrando / F1 en curso** — bot DESPLEGADO en Coolify y
+capturando en paper/shadow desde 2026-07-03 05:54 UTC. Cero órdenes reales.
 
-Código construido hasta F3 inclusive (los gates NO se saltaron: F1/F2/F3 son
-gates de *activación* que corren con el bot desplegado; el código está listo
-y testeado en seco, y el trading sigue apagado).
+Deploy: commit `f3f92d1`, branch `claude/markdown-guide-goal-9mymiy`,
+contenedor `Running (healthy)`, host `104.236.211.240:18081` → `:8080` interno.
+Volúmenes propios: `polybot_data:/app/data`, `polybot_logs:/app/logs`,
+`polybot_secrets:/app/secrets(:ro)`. Kalshi intacto en `:18080`.
 
 ## Gate F0 → F1
 
-- [x] Runner arranca sin errores, health server responde (verificado local: exit 0 con SIGTERM)
-- [x] `GET /health` 200; `GET /status` JSON con `started_at` y `ws_connected:false`
-- [x] `smoke_test.py` verde local (check CLOB queda SKIPPED aquí: el sandbox no
-      tiene salida a polymarket.com; en CI y en el droplet corre completo)
-- [x] `pytest` de config y risk/manager al 100% (149 tests totales, ruff verde)
-- [x] `.pem`/keystore fuera del repo; `.gitignore` + `.dockerignore` correctos
-- [ ] `docker build` ok (sin daemon en el sandbox — lo valida CI/Coolify)
-- [ ] Contenedor `healthy` ≥ 1h en Coolify (`104.236.211.240:18081/health`) — **requiere deploy humano** (§0.3)
+- [x] `docker build` ok (CI + Coolify)
+- [x] Contenedor healthy sirviendo `/health` 200 externo
+- [x] `GET /status`: `env:paper`, `shadow_mode:true`, `ws_connected:true`,
+      `markets_watched:20`, `last_error:null`, ciclos avanzando
+- [x] `smoke_test.py` y `check_no_go.py` verdes en CI
+- [x] `pytest` 156 tests, ruff verde
+- [x] Secretos fuera del repo; `.gitignore`/`.dockerignore` correctos
+- [~] Healthy ≥ 1h continua: reloj arrancó 05:54 UTC — cierre estimado ~06:54 UTC
 
-## Gate F1 → F2 (código listo, reloj corre tras el deploy)
+## Gate F1 → F2 (reloj de 48h de captura CORRIENDO desde 05:54 UTC)
 
+- [x] WS market channel conectado, 20 mercados, eventos persistiéndose
 - [x] Firma EIP-712 validada contra vector fijo + ecrecover (tests)
-- [x] `derive_api_key`, `get_balance_allowance`, `build_order` (firma, NO postea) implementados
-- [ ] Firma validada contra el API real / credenciales L2 usables — requiere red + wallet de prueba
-- [ ] WS estable ≥ 48h, gaps/60s ≈ 0 — requiere deploy
+- [ ] WS estable ≥ 48h con gaps/60s ≈ 0 → revisar `analyst_verdicts` y funnel el 2026-07-05
+- [ ] Validar firma contra API real (`derive_api_key` 200) con wallet de prueba — pendiente
 
-## Gate F2 → F3 (código listo, reloj de 7 días corre tras el deploy)
+## Gate F2 → F3 (shadow corriendo; ≥ 7 días desde 2026-07-03)
 
-- [x] Motor 1 shadow con filtro anti-fantasma (`edge_too_high`) desde el día 1
-- [x] `EdgeWindow` + `FunnelSnapshot` por ciclo + `AnalystVerdict` diario (funciones puras)
-- [x] RiskManager dry-run registra decisión sin reservar
-- [ ] ≥ 7 días de shadow continuo con PnL teórico > 0 — requiere deploy
+- [x] Motor 1 evaluando cada 2s con anti-fantasma y RiskManager dry-run
+- [ ] 7 días de shadow continuo con PnL teórico > 0 → evaluable desde 2026-07-10
 
-## Gate F3 → F4 (código listo EN SECO, jamás encendido)
+## Gate F3 → F4 (código en seco; NUNCA encendido por el agente)
 
-- [x] Executor postea sólo tras `check_and_reserve`; rollback de piernas; fills por user channel
-- [x] Reconciliación on-chain↔DB con pausa preventiva y bloqueo del NO-GO
-- [x] `TRADING_ENABLED=false` en todo el repo; encenderlo es acción humana
-- [ ] Todo lo demás del gate (20 trades reales, kill-switch en vivo) — post-encendido humano
+- [x] Executor + user channel + reconciliación testeados en seco
+- [ ] Secretos de F3 pendientes (correcto en paper): wallet key como archivo en
+      `/app/secrets` (chmod 400), CLOB creds como env secrets, approvals USDC = humano
+- [ ] Encendido (`TRADING_ENABLED=true` + `POLYMARKET_ENV=production`) = decisión humana
+      tras gates F1 y F2 verdes + NO-GO en GO
+
+## Incidencias resueltas (2026-07-03)
+
+1. **Branch en Coolify**: apuntaba a `main` (inexistente) → corregido al default.
+2. **`CLOB_API_URL` sin protocolo** en env vars → `UnsupportedProtocol` en loop,
+   `ws_connected:false`. Fix humano en el panel + hardening en código (PR #3):
+   URLs sin esquema se normalizan, endpoints cruzados fallan en el boot.
+3. **Typos de env vars** (`AX_SIMULTANEOUS_EXPOSURE_PCT`, `MIN_LIQUIDITY_CONTRACT`)
+   → renombrados; mientras estuvieron mal, pydantic usó los defaults hardcoded seguros.
 
 ## Última iteración
 
-2026-07-03 — Construcción completa F0→F3 en 4 commits (`533b11e`, `09a2ef1`,
-`dae060f`, `3a449eb`): infra portada y adaptada a Polymarket, EIP-712 + WS +
-data capture, motor 1 en shadow con funnel/analyst, F3 en seco. 149 tests,
-ruff verde, smoke y NO-GO verdes localmente.
+2026-07-03 — Deploy verificado en vivo, bug de URL diagnosticado y corregido
+(env var + hardening con 7 tests de regresión), captura estable con 20 mercados.
+PRs #1 y #3 mergeados.
 
 ## Siguiente paso
 
-1. **Humano:** merge del PR y deploy en Coolify como app nueva (§0.3): puerto
-   host `:18081`, volúmenes `/app/data` `/app/logs` `/app/secrets`, env vars
-   del panel (`.env.example` como plantilla), wallet key como secret volume.
-2. Verificar `http://104.236.211.240:18081/health` y dejar el contenedor ≥ 1h
-   (cierra el gate F0).
-3. Con el deploy corriendo empieza el reloj de 48h de captura (gate F1) y luego
-   los 7 días de shadow (gate F2). El digest de Telegram reporta el funnel; el
-   veredicto diario queda en `analyst_verdicts`.
-4. Cross-check pendiente de F1: validar la firma contra el API real
-   (`derive_api_key` 200) con la wallet de prueba.
+1. Confirmar cierre del gate F0 (~06:54 UTC: 1h healthy sin reinicios).
+2. Dejar correr la captura; el 2026-07-05 evaluar gate F1 con datos reales:
+   `analyst_verdicts` (ws_uptime, gaps) + conteo de `orderbook_events`.
+3. En paralelo, cuando haya wallet de prueba: validar `derive_api_key` contra el
+   API real (cierra el punto pendiente de F1).
+4. Gate F2 evaluable desde 2026-07-10 con el funnel de 7 días.
