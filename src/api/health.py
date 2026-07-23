@@ -11,7 +11,7 @@ Endpoints:
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -135,6 +135,57 @@ async def status() -> dict[str, Any]:
         "disk_low": BotState.disk_low,
         "last_error": error,
         "last_error_at": error_at.isoformat() if error_at else None,
+    }
+
+
+@app.get("/stats/daily")
+async def stats_daily(days: int = 30) -> dict[str, Any]:
+    """
+    Conteos diarios de telemetría (read-only) — para verificar continuidad de
+    captura por HTTP sin terminal (lo consume el agente web). Por día UTC:
+    snapshots de mercado, eventos de libro, gaps, ciclos del motor, edges
+    shadow, PnL teórico y veredicto del analyst.
+    """
+    days = max(1, min(days, 120))
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d")
+    engine = get_engine()
+
+    per_day: dict[str, dict[str, Any]] = {}
+
+    def _fill(sql: str, keys: list[str]) -> None:
+        with engine.connect() as conn:
+            for row in conn.execute(text(sql), {"cutoff": cutoff}):
+                day = str(row[0])
+                bucket = per_day.setdefault(day, {})
+                for i, key in enumerate(keys, start=1):
+                    bucket[key] = row[i]
+
+    _fill(
+        "SELECT date(captured_at), COUNT(*) FROM market_snapshots "
+        "WHERE date(captured_at) >= :cutoff GROUP BY 1",
+        ["market_snapshots"],
+    )
+    _fill(
+        "SELECT date(received_at), COUNT(*), COALESCE(SUM(is_gap), 0) FROM orderbook_events "
+        "WHERE date(received_at) >= :cutoff GROUP BY 1",
+        ["orderbook_events", "gaps"],
+    )
+    _fill(
+        "SELECT date(cycle_ts), COUNT(*), COALESCE(SUM(edges_recorded), 0), "
+        "ROUND(COALESCE(SUM(theoretical_pnl_usd), 0), 4) FROM funnel_snapshots "
+        "WHERE date(cycle_ts) >= :cutoff GROUP BY 1",
+        ["funnel_cycles", "edges_recorded", "theoretical_pnl_usd"],
+    )
+    _fill(
+        "SELECT date, verdict FROM analyst_verdicts WHERE date >= :cutoff GROUP BY 1",
+        ["verdict"],
+    )
+
+    return {
+        "days_requested": days,
+        "cutoff": cutoff,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "daily": dict(sorted(per_day.items())),
     }
 
 
