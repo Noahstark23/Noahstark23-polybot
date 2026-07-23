@@ -189,6 +189,81 @@ async def stats_daily(days: int = 30) -> dict[str, Any]:
     }
 
 
+@app.get("/stats/edges")
+async def stats_edges(days: int = 30) -> dict[str, Any]:
+    """
+    Distribución del edge BRUTO (1 - ask_YES - ask_NO) sobre market_snapshots
+    (read-only). Responde la pregunta del gate F2 en rojo: ¿el mercado observado
+    tiene edge por debajo del umbral, o directamente no tiene?
+    Nota: es el edge bruto SIN costos; el umbral de shadow aplica sobre el neto.
+    """
+    days = max(1, min(days, 120))
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d")
+    engine = get_engine()
+    base_where = (
+        "FROM market_snapshots WHERE date(captured_at) >= :cutoff "
+        "AND best_ask_yes IS NOT NULL AND best_ask_no IS NOT NULL"
+    )
+    with engine.connect() as conn:
+        totals = conn.execute(
+            text(
+                "SELECT COUNT(*), "
+                "ROUND(AVG(1 - best_ask_yes - best_ask_no), 5), "
+                "ROUND(MAX(1 - best_ask_yes - best_ask_no), 5), "
+                "ROUND(MIN(1 - best_ask_yes - best_ask_no), 5) " + base_where
+            ),
+            {"cutoff": cutoff},
+        ).one()
+        buckets = {
+            "gross_gt_0": "1 - best_ask_yes - best_ask_no > 0",
+            "gross_gt_0_5pct": "1 - best_ask_yes - best_ask_no > 0.005",
+            "gross_gt_1pct": "1 - best_ask_yes - best_ask_no > 0.01",
+            "gross_gt_2pct": "1 - best_ask_yes - best_ask_no > 0.02",
+            "gross_gt_5pct": "1 - best_ask_yes - best_ask_no > 0.05",
+        }
+        counts = {
+            name: conn.execute(
+                text(f"SELECT COUNT(*) {base_where} AND {cond}"), {"cutoff": cutoff}
+            ).scalar()
+            for name, cond in buckets.items()
+        }
+        top = [
+            {
+                "captured_at": str(row[0]),
+                "condition_id": row[1],
+                "question": row[2],
+                "gross_edge": row[3],
+            }
+            for row in conn.execute(
+                text(
+                    "SELECT captured_at, condition_id, substr(question, 1, 80), "
+                    "ROUND(1 - best_ask_yes - best_ask_no, 5) AS g "
+                    + base_where
+                    + " ORDER BY g DESC LIMIT 10"
+                ),
+                {"cutoff": cutoff},
+            )
+        ]
+
+    return {
+        "days_requested": days,
+        "cutoff": cutoff,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "snapshots_with_both_asks": totals[0],
+        "gross_edge_avg": totals[1],
+        "gross_edge_max": totals[2],
+        "gross_edge_min": totals[3],
+        "counts_above": counts,
+        "top_10_gross_edges": top,
+        "note": (
+            "Edge bruto sin costos. El shadow exige neto >= MIN_EDGE_PCT tras "
+            "fees+slippage. counts_above en cero = el universo observado no "
+            "presenta ineficiencia; counts_above>0 con edges_recorded=0 = el "
+            "umbral/costos filtran todo (recalibrar por config)."
+        ),
+    }
+
+
 @app.post("/admin/pause")
 async def admin_pause(reason: str = "manual") -> dict[str, Any]:
     """Pausa manual (motor deja de evaluar; health sigue vivo)."""

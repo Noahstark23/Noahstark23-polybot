@@ -1,7 +1,27 @@
 # HANDOFF — Estado del proyecto
 
-Fase activa: **F0 cerrando / F1 en curso** — bot DESPLEGADO en Coolify y
-capturando en paper/shadow desde 2026-07-03 05:54 UTC. Cero órdenes reales.
+Fase activa: **F2 en shadow con GATE ROJO por causa de mercado** (no de código).
+Bot desplegado y capturando desde 2026-07-03. Cero órdenes reales.
+
+## Evaluación de gates 2026-07-23 (datos reales de /stats/daily, 21 días)
+
+- **F0: 🟢 CERRADO.** Contenedor healthy semanas; sólo un reinicio (07-10).
+- **F1: 🟢 VERDE en captura** — 21 días CONTINUOS sin agujeros (~28.760
+  snapshots/día = 20 mercados × 1/min exacto; ~42.940 ciclos/día = tick 2s).
+  El disk-full del 07-11 fue transitorio (ese día tiene conteo completo).
+  Pendiente único: validar `derive_api_key` contra API real (wallet de prueba).
+- **F2: 🔴 ROJO** — `edges_recorded = 0` y `theoretical_pnl_usd = 0` en los 21
+  días, con verdict `healthy` sostenido. El bot mide bien; el universo
+  observado (20 sampling-markets) no presentó UNA oportunidad neta >= 1% en
+  ~590k snapshots. Gate exige PnL teórico > 0 → no se avanza a F3.
+  **Causa raíz pendiente de diagnóstico** con `/stats/edges` (distribución del
+  edge bruto): ¿el universo no tiene ineficiencia (→ pivotar de universo o
+  archivar el motor — resultado válido) o el umbral/costos filtran micro-edges
+  reales (→ recalibrar MIN_EDGE_PCT por config, decisión humana con el dato)?
+
+Nota de higiene del loop: el reporte del agente web mezcló contexto ajeno
+("umbral 3.0pp", "Kalshi deportes", "M8/ofi" — no existen en Polybot). Los
+NÚMEROS del endpoint son confiables; su narrativa se descarta (Lección 2).
 
 Deploy: commit `f3f92d1`, branch `claude/markdown-guide-goal-9mymiy`,
 contenedor `Running (healthy)`, host `104.236.211.240:18081` → `:8080` interno.
