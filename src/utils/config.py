@@ -112,6 +112,19 @@ class Settings(BaseSettings):
     ENGINE_TICK_SECONDS: float = Field(2.0, gt=0.1, le=60)
     RECONCILE_INTERVAL_SECONDS: int = Field(300, ge=30, le=3600)
 
+    # === Mantenimiento / retención (lección "nada sin tope" — incidente 2026-07-11) ===
+    MAINTENANCE_ENABLED: bool = True
+    MAINTENANCE_INTERVAL_SECONDS: int = Field(3600, ge=60)
+    RETENTION_ORDERBOOK_EVENTS_DAYS: int = Field(14, ge=1)
+    RETENTION_MARKET_SNAPSHOTS_DAYS: int = Field(30, ge=1)
+    RETENTION_FUNNEL_SNAPSHOTS_DAYS: int = Field(90, ge=7)
+    # Disco libre mínimo antes de podar agresivo (telemetría se sacrifica,
+    # la captura/detección NUNCA se gatea)
+    DISK_MIN_FREE_GB: float = Field(2.0, gt=0)
+    DISK_WARN_FREE_GB: float = Field(5.0, gt=0)
+    # last_error deja de mostrarse en /status pasado este TTL (sticky enmascara)
+    LAST_ERROR_TTL_SECONDS: int = Field(21600, ge=60)  # 6h
+
     # === Riesgo (cota superior hardcoded — se puede bajar por env, no subir) ===
     MAX_DAILY_LOSS_PCT: float = Field(HARD_MAX_DAILY_LOSS_PCT, gt=0, le=HARD_MAX_DAILY_LOSS_PCT)
     MAX_WEEKLY_LOSS_PCT: float = Field(HARD_MAX_WEEKLY_LOSS_PCT, gt=0, le=HARD_MAX_WEEKLY_LOSS_PCT)

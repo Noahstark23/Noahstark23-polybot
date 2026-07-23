@@ -39,6 +39,8 @@ class BotState:
     last_error_at: datetime | None = None
     last_cycle_at: datetime | None = None
     markets_watched: int = 0
+    disk_free_gb: float | None = None
+    disk_low: bool = False
 
     @classmethod
     def uptime_seconds(cls) -> float:
@@ -48,6 +50,20 @@ class BotState:
     def record_error(cls, message: str) -> None:
         cls.last_error = message[:500]
         cls.last_error_at = datetime.now(UTC)
+
+    @classmethod
+    def fresh_error(cls, ttl_seconds: int) -> tuple[str | None, datetime | None]:
+        """
+        last_error con TTL: pasado el TTL deja de mostrarse (un error sticky de
+        días enmascara errores nuevos — deuda documentada del bot Kalshi que se
+        confirmó acá: un 'disk full' del 07-11 seguía colgado el 07-23).
+        """
+        if cls.last_error is None or cls.last_error_at is None:
+            return None, None
+        age = (datetime.now(UTC) - cls.last_error_at).total_seconds()
+        if age > ttl_seconds:
+            return None, None
+        return cls.last_error, cls.last_error_at
 
 
 @asynccontextmanager
@@ -100,6 +116,7 @@ async def ready() -> dict[str, Any]:
 async def status() -> dict[str, Any]:
     """Snapshot de estado del bot."""
     settings = get_settings()
+    error, error_at = BotState.fresh_error(settings.LAST_ERROR_TTL_SECONDS)
     return {
         "env": settings.POLYMARKET_ENV,
         "trading_enabled": settings.TRADING_ENABLED,
@@ -114,8 +131,10 @@ async def status() -> dict[str, Any]:
         "last_cycle_at": BotState.last_cycle_at.isoformat() if BotState.last_cycle_at else None,
         "is_paused": BotState.is_paused,
         "pause_reason": BotState.pause_reason,
-        "last_error": BotState.last_error,
-        "last_error_at": BotState.last_error_at.isoformat() if BotState.last_error_at else None,
+        "disk_free_gb": BotState.disk_free_gb,
+        "disk_low": BotState.disk_low,
+        "last_error": error,
+        "last_error_at": error_at.isoformat() if error_at else None,
     }
 
 

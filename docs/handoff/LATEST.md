@@ -48,6 +48,27 @@ Volúmenes propios: `polybot_data:/app/data`, `polybot_logs:/app/logs`,
 3. **Typos de env vars** (`AX_SIMULTANEOUS_EXPOSURE_PCT`, `MIN_LIQUIDITY_CONTRACT`)
    → renombrados; mientras estuvieron mal, pydantic usó los defaults hardcoded seguros.
 
+## Incidente 2026-07-11 (detectado 2026-07-23 por el agente web)
+
+`data_capture: OperationalError: database or disk is full` en un INSERT de
+`market_snapshots` el 2026-07-11 — la lección "nada sin tope" repetida acá:
+`orderbook_events` sin retención llenó el disco a los ~8 días de captura.
+El error quedó sticky en `/status` 12.7 días enmascarando errores nuevos.
+Además: el contenedor corre desde 2026-07-10 (uptime 13.6d) → los merges del
+2026-07-23 (WAL #5, skill #6) NO están deployados; verificar el auto-deploy
+de Coolify o redeployar a mano.
+
+Fix (mismo PR de la skill): servicio `maintenance` con retención por tabla
+(events 14d / snapshots 30d / funnel 90d), guard de disco de lazo cerrado
+(warn 5GB, crítico 2GB → poda agresiva + RiskEvent; la captura nunca se gatea),
+`wal_checkpoint(TRUNCATE)` tras podar, `last_error` con TTL 6h y
+`disk_free_gb`/`disk_low` en `/status`.
+
+Pendiente humano tras el merge: redeploy + verificar `df -h` del droplet y que
+`market_snapshots` recibió INSERTs post-07-11 (¿la captura entre 07-11 y hoy
+quedó coja?). Ojo: el reloj de 48h del gate F1 debe evaluarse sobre datos
+CONTINUOS — si hubo agujero por disco lleno, el reloj re-arranca post-fix.
+
 ## Última iteración
 
 2026-07-03 — Deploy verificado en vivo, bug de URL diagnosticado y corregido
