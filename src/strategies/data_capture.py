@@ -91,22 +91,74 @@ class DataCaptureService:
                         markets.append(m)
                 except Exception:
                     logger.exception(f"No pude cargar mercado {cid}")
+        elif self.settings.MARKET_DISCOVERY_SOURCE == "all_recent":
+            markets = await self._discover_all_recent(clob)
         else:
-            cursor = ""
-            while len(markets) < self.settings.MAX_WATCHED_MARKETS:
-                page = await clob.get_sampling_markets(cursor)
-                for raw in page.get("data") or []:
-                    m = extract_binary_market(raw)
-                    if m:
-                        markets.append(m)
-                    if len(markets) >= self.settings.MAX_WATCHED_MARKETS:
-                        break
-                cursor = page.get("next_cursor") or "LTE="
-                if cursor == "LTE=":
-                    break
+            markets = await self._discover_sampling(clob)
         self.watched = {m.condition_id: m for m in markets if m.condition_id}
         BotState.markets_watched = len(self.watched)
-        logger.info(f"Data capture: observando {len(self.watched)} mercados")
+        logger.info(
+            f"Data capture: observando {len(self.watched)} mercados "
+            f"(source={self.settings.MARKET_DISCOVERY_SOURCE if not wanted else 'explicit'})"
+        )
+
+    async def _discover_sampling(self, clob: PolymarketClobClient) -> list[WatchedMarket]:
+        """Universo original: mercados con rewards (los más líquidos/eficientes)."""
+        markets: list[WatchedMarket] = []
+        cursor = ""
+        while len(markets) < self.settings.MAX_WATCHED_MARKETS:
+            page = await clob.get_sampling_markets(cursor)
+            for raw in page.get("data") or []:
+                m = extract_binary_market(raw)
+                if m:
+                    markets.append(m)
+                if len(markets) >= self.settings.MAX_WATCHED_MARKETS:
+                    break
+            cursor = page.get("next_cursor") or "LTE="
+            if cursor == "LTE=":
+                break
+        return markets
+
+    async def _discover_all_recent(self, clob: PolymarketClobClient) -> list[WatchedMarket]:
+        """
+        Universo long-tail (pivote 2026-07-23): binarios activos de /markets,
+        EXCLUYENDO los del set sampling (demostrados eficientes: 0 edges brutos
+        en 21 días). Se pagina hasta DISCOVERY_MAX_PAGES y se quedan los
+        ÚLTIMOS N descubiertos — asumiendo paginación por creación, los más
+        nuevos, que es donde el libro todavía no está arbitrado.
+        El shadow valida el supuesto: si los skips no_books dominan el funnel,
+        el universo elegido no tiene libros vivos y se re-pivotea.
+        """
+        sampling_ids: set[str] = set()
+        cursor = ""
+        for _ in range(self.settings.DISCOVERY_MAX_PAGES):
+            page = await clob.get_sampling_markets(cursor)
+            for raw in page.get("data") or []:
+                cid = raw.get("condition_id")
+                if cid:
+                    sampling_ids.add(cid)
+            cursor = page.get("next_cursor") or "LTE="
+            if cursor == "LTE=":
+                break
+
+        candidates: list[WatchedMarket] = []
+        cursor = ""
+        for _ in range(self.settings.DISCOVERY_MAX_PAGES):
+            page = await clob.get_markets(cursor)
+            for raw in page.get("data") or []:
+                m = extract_binary_market(raw)
+                if m and m.condition_id not in sampling_ids:
+                    candidates.append(m)
+            cursor = page.get("next_cursor") or "LTE="
+            if cursor == "LTE=":
+                break
+
+        picked = candidates[-self.settings.MAX_WATCHED_MARKETS :]
+        logger.info(
+            f"Discovery all_recent: {len(candidates)} candidatos long-tail "
+            f"({len(sampling_ids)} sampling excluidos) -> observando {len(picked)}"
+        )
+        return picked
 
     @property
     def token_ids(self) -> list[str]:

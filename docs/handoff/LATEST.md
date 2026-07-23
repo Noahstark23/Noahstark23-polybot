@@ -23,6 +23,26 @@ Nota de higiene del loop: el reporte del agente web mezcló contexto ajeno
 ("umbral 3.0pp", "Kalshi deportes", "M8/ofi" — no existen en Polybot). Los
 NÚMEROS del endpoint son confiables; su narrativa se descarta (Lección 2).
 
+## Diagnóstico F2 CERRADO (2026-07-23, /stats/edges sobre 585.040 snapshots)
+
+`gross_gt_0 = 0`: ni UNA vez en 21 días la suma ask_YES+ask_NO bajó de 1.00.
+Máximo bruto del mes: -0.001 (primeros minutos de captura). Promedio: -0.030.
+**Conclusión: el universo sampling (mercados con rewards) no tiene ineficiencia
+NI BRUTA — recalibrar MIN_EDGE_PCT no sirve (no hay nada sobre cero).**
+
+**Decisión humana (Noel, 2026-07-23): OPCIÓN A — pivotar universo al long-tail.**
+Implementado `MARKET_DISCOVERY_SOURCE=sampling|all_recent`: all_recent pagina
+/markets, filtra binarios activos, EXCLUYE los condition_ids del set sampling
+y observa los N más recientes. Default sigue `sampling` — el pivote se activa
+por env var en Coolify (ITERAR solo por config).
+
+Para activar el experimento: en Coolify setear `MARKET_DISCOVERY_SOURCE=all_recent`
++ redeploy. Correr ≥7 días de shadow en el nuevo universo y re-evaluar F2 con
+/stats/daily y /stats/edges. Si los skips `no_books` dominan el funnel, el
+long-tail elegido no tiene libros vivos → re-pivotear o pasar a la opción B
+(tesis neg-risk multi-outcome, F0 discovery primero). Archivar el motor sigue
+siendo resultado válido.
+
 Deploy: commit `f3f92d1`, branch `claude/markdown-guide-goal-9mymiy`,
 contenedor `Running (healthy)`, host `104.236.211.240:18081` → `:8080` interno.
 Volúmenes propios: `polybot_data:/app/data`, `polybot_logs:/app/logs`,
