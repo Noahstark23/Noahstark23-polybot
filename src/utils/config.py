@@ -109,6 +109,12 @@ class Settings(BaseSettings):
     # Lista de condition_ids a observar (CSV). Vacío => descubrir vía get_markets.
     WATCHED_CONDITION_IDS: str = ""
     MAX_WATCHED_MARKETS: int = Field(20, gt=0, le=200)
+    # Universo de discovery (decisión 2026-07-23 tras F2 rojo: 0 edges brutos
+    # en 585k snapshots del universo sampling — mercados con rewards = los más
+    # eficientes). "all_recent" observa el long-tail: binarios activos más
+    # recientes de /markets, excluyendo los del set sampling.
+    MARKET_DISCOVERY_SOURCE: Literal["sampling", "all_recent"] = "sampling"
+    DISCOVERY_MAX_PAGES: int = Field(200, gt=0, le=1000)
     ENGINE_TICK_SECONDS: float = Field(2.0, gt=0.1, le=60)
     RECONCILE_INTERVAL_SECONDS: int = Field(300, ge=30, le=3600)
 
