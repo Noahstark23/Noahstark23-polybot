@@ -38,7 +38,27 @@ def get_engine():
             connect_args=connect_args,
             echo=False,
         )
+        if settings.DATABASE_URL.startswith("sqlite"):
+            _install_sqlite_pragmas(_engine)
     return _engine
+
+
+def _install_sqlite_pragmas(engine) -> None:
+    """
+    SQLite con 2+ escritores concurrentes (data capture + motor + health)
+    requiere WAL + busy_timeout — lección del bot Kalshi: el "0 errores" sin
+    WAL era engañoso porque aún no había segundo escritor. Se aplica en cada
+    conexión nueva del pool.
+    """
+    from sqlalchemy import event
+
+    @event.listens_for(engine, "connect")
+    def _set_pragmas(dbapi_conn, _record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
 
 
 def reset_engine_for_testing() -> None:
