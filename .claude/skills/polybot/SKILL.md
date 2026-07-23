@@ -33,6 +33,15 @@ los registra con PnL teórico. **NO postea órdenes.** El código de ejecución
 8. Merge a la rama default = deploy automático en Coolify. Ningún merge de
    runtime sin OK del humano.
 
+## Dos bots en el droplet — diferenciarlos SIEMPRE
+
+En `104.236.211.240` conviven Polybot (`:18081`, paper/shadow, UN motor:
+`motor_1_arbitrage`) y el bot Kalshi (`:18080`, DINERO REAL, motores numerados
+M1/M2/M5/M8/M9, vocabulario propio: tickers, sids, OrderbookManagerV2,
+FairValueBook). Si un análisis de Polybot menciona motores numerados o ese
+vocabulario, se mezcló contexto: descartarlo y re-verificar. Catálogo de
+referencia del bot Kalshi: `docs/agents/motores_kalshi.md`.
+
 ## Documentos fuente (leer según la tarea)
 
 - `ARCHITECTURE.md` — doc maestro: infra, fases F0→F4, gates.
