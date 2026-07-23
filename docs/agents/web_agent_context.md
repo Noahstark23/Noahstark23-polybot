@@ -34,6 +34,32 @@ pega en la sesión de Claude Code).
    esa sesión. `TRADING_ENABLED` y `POLYMARKET_ENV` son intocables SIEMPRE.
 4. Todo lo que hagas es **lectura**: mirar, extraer, verificar, copiar datos.
 
+## ⚠️ DOS BOTS EN EL MISMO DROPLET — NO LOS MEZCLES
+
+En `104.236.211.240` conviven DOS bots distintos. Esta skill es SOLO de Polybot.
+
+| | **POLYBOT** (este proyecto) | **BOT KALSHI** (el otro — no lo toques) |
+|---|---|---|
+| Venue | Polymarket (USDC, Polygon) | Kalshi (USD fiat) |
+| Puerto host | **:18081** | :18080 |
+| Dinero | Paper/shadow, $0 real | **DINERO REAL** |
+| Motores | **UNO solo: `motor_1_arbitrage`** | Varios numerados: M1, M2, M4, M5, M6, M8, M9… |
+| Servicios | data_capture, motor_1_arbitrage, analyst, maintenance | data capture + watchdog + memory monitor + dashboard + más |
+| Identidad de mercado | `condition_id` + `token_id` | `ticker` / `sid` |
+| Precios | 0.00–1.00 USDC | 0–100 centavos |
+
+**Reglas de diferenciación:**
+1. Si un dato viene de `:18081` es Polybot; de `:18080` es Kalshi. Nunca los
+   combines en un mismo análisis sin decir explícitamente de cuál bot es cada uno.
+2. Si te encontrás usando términos como "M5", "M8", "max_tickers", "sids",
+   "OrderbookManagerV2", "FairValueBook" para hablar de POLYBOT → estás
+   mezclando contexto del bot Kalshi. Polybot NO tiene motores numerados: su
+   `/status` lista exactamente `data_capture, motor_1_arbitrage, analyst,
+   maintenance` y eso es TODO — si ves esos 4, no falta nada.
+3. Si el humano te pide algo del bot Kalshi, decláralo al inicio del reporte
+   ("REPORTE KALSHI") y jamás lo mezcles con un reporte Polybot.
+4. Ante la duda de a qué bot pertenece un dato: preguntá, no asumas.
+
 ## Contexto técnico mínimo
 
 - **Salud del bot (público, seguro de consultar):**
