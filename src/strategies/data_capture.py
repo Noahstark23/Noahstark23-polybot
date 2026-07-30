@@ -168,7 +168,7 @@ class DataCaptureService:
     async def _discover_neg_risk(self, clob: PolymarketClobClient) -> list[WatchedMarket]:
         """
         Universo del Motor 2: GRUPOS neg-risk (eventos multi-outcome donde
-        exactamente un outcome resuelve YES) con >= MOTOR_2_MIN_LEGS patas.
+        exactamente un outcome resuelve YES) con >= MOTOR_3_MIN_LEGS patas.
 
         EL RIESGO #1 DE ESTE UNIVERSO ES EL GRUPO INCOMPLETO: si una pata del
         evento no entra al grupo (cerrada, malformada, o fuera de las páginas
@@ -211,7 +211,7 @@ class DataCaptureService:
             )
             return []
 
-        min_legs = self.settings.MOTOR_2_MIN_LEGS
+        min_legs = self.settings.MOTOR_3_MIN_LEGS
         complete = {
             gid: legs
             for gid, legs in extracted.items()
@@ -239,7 +239,7 @@ class DataCaptureService:
 
     @property
     def neg_risk_groups(self) -> dict[str, list[WatchedMarket]]:
-        """Grupos multi-outcome observados: neg_risk_market_id -> patas (lo consume M2)."""
+        """Grupos multi-outcome observados: neg_risk_market_id -> patas (lo consume M3)."""
         groups: dict[str, list[WatchedMarket]] = {}
         for m in self.watched.values():
             if m.neg_risk_market_id:

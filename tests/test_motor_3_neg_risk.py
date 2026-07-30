@@ -1,8 +1,8 @@
 """
-Tests del Motor 2 (neg-risk multi-outcome) en SHADOW.
+Tests del Motor 3 (neg-risk multi-outcome) en SHADOW.
 
 Cubren la math pura (ambas direcciones), el pipeline de filtros con el
-anti-fantasma, el de-dupe anti-flood, el funnel con motor=motor_2, el
+anti-fantasma, el de-dupe anti-flood, el funnel con motor=motor_3, el
 discovery de grupos (incluido el guard de grupos incompletos — el riesgo #1
 de este universo) y la migración de funnel_snapshots.motor.
 """
@@ -15,7 +15,7 @@ from src.db.engine import get_session
 from src.db.models import FunnelSnapshot, MultiEdgeWindow
 from src.marketdata import registry
 from src.math.fees import multi_outcome_edge
-from src.motor_2_neg_risk.engine import LegQuote, NegRiskEngine
+from src.motor_3_neg_risk.engine import LegQuote, NegRiskEngine
 from src.strategies.data_capture import DataCaptureService, WatchedMarket
 from src.utils.config import get_settings
 
@@ -190,7 +190,7 @@ def capture_with_group(initialized_db):
 
 
 class TestTick:
-    def test_tick_graba_ventana_y_funnel_motor_2(self, engine, capture_with_group):
+    def test_tick_graba_ventana_y_funnel_motor_3(self, engine, capture_with_group):
         summary = engine.tick()
         assert summary["groups_evaluated"] == 1
         assert summary["edges_recorded"] == 1  # solo buy_yes_all
@@ -202,7 +202,7 @@ class TestTick:
             assert windows[0].direction == "buy_yes_all"
             assert windows[0].neg_risk_market_id == "grp-1"
             assert len(funnels) == 1
-            assert funnels[0].motor == "motor_2"
+            assert funnels[0].motor == "motor_3"
 
     def test_dedupe_oportunidad_identica_no_reescribe(self, engine, capture_with_group):
         """Anti-flood (incidente Kalshi 13M filas/día): el MISMO arb tick tras
@@ -229,7 +229,7 @@ class TestTick:
 
     def test_grupo_chico_se_saltea(self, engine, initialized_db):
         svc = DataCaptureService(get_settings())
-        markets = _watched("grp-2", 2, "0xb")  # < MOTOR_2_MIN_LEGS=3
+        markets = _watched("grp-2", 2, "0xb")  # < MOTOR_3_MIN_LEGS=3
         svc.watched = {m.condition_id: m for m in markets}
         svc.books = _FakeBooks({})
         registry.set_capture(svc)
@@ -379,9 +379,9 @@ class TestMigracionYConfig:
 
         db_engine.init_db()  # idempotente
 
-    def test_motor_2_default_apagado(self, settings):
+    def test_motor_3_default_apagado(self, settings):
         """Mergear no cambia nada: el motor 2 nace apagado y se enciende por
         env var en Coolify (mismo patrón que el pivote de universo)."""
-        assert settings.MOTOR_2_NEG_RISK_ENABLED is False
+        assert settings.MOTOR_3_NEG_RISK_ENABLED is False
         assert settings.MARKET_DISCOVERY_SOURCE == "sampling"
-        assert settings.MOTOR_2_MIN_LEGS == 3
+        assert settings.MOTOR_3_MIN_LEGS == 3

@@ -178,7 +178,9 @@ async def stats_daily(days: int = 30) -> dict[str, Any]:
     )
     # Funnel POR MOTOR (lección de la auditoría Kalshi 07-18: el agregado
     # enmascara). Las claves viejas siguen siendo el motor 1 (compat con los
-    # reportes del agente web); el motor 2 va con prefijo m2_.
+    # reportes del agente web); M2 consenso va con m2_, M3 neg-risk con m3_.
+    # OJO unidad de m2_theoretical: para el consenso es EV (apuesta direccional,
+    # se puede perder), no PnL de arbitraje como en m1/m3.
     _fill(
         "SELECT date(cycle_ts), COUNT(*), COALESCE(SUM(edges_recorded), 0), "
         "ROUND(COALESCE(SUM(theoretical_pnl_usd), 0), 4) FROM funnel_snapshots "
@@ -189,7 +191,13 @@ async def stats_daily(days: int = 30) -> dict[str, Any]:
         "SELECT date(cycle_ts), COUNT(*), COALESCE(SUM(edges_recorded), 0), "
         "ROUND(COALESCE(SUM(theoretical_pnl_usd), 0), 4) FROM funnel_snapshots "
         "WHERE cycle_ts >= :cutoff AND motor = 'motor_2' GROUP BY 1",
-        ["m2_funnel_cycles", "m2_edges_recorded", "m2_theoretical_pnl_usd"],
+        ["m2_funnel_cycles", "m2_signals_recorded", "m2_theoretical_ev_usd"],
+    )
+    _fill(
+        "SELECT date(cycle_ts), COUNT(*), COALESCE(SUM(edges_recorded), 0), "
+        "ROUND(COALESCE(SUM(theoretical_pnl_usd), 0), 4) FROM funnel_snapshots "
+        "WHERE cycle_ts >= :cutoff AND motor = 'motor_3' GROUP BY 1",
+        ["m3_funnel_cycles", "m3_edges_recorded", "m3_theoretical_pnl_usd"],
     )
     _fill(
         "SELECT date, verdict FROM analyst_verdicts WHERE date >= :cutoff GROUP BY 1",
@@ -282,6 +290,89 @@ async def stats_edges(days: int = 30) -> dict[str, Any]:
     }
 
 
+@app.get("/stats/consensus")
+async def stats_consensus(days: int = 30) -> dict[str, Any]:
+    """
+    Señales del Motor 2 (consenso de sportsbooks, read-only). UNIDAD: los edge
+    van en `_pp` = PUNTOS de probabilidad (fair − ask, ×100) — NO son el "% del
+    capital" de motor 1/3, y `theoretical_ev_usd` es valor esperado de una
+    apuesta DIRECCIONAL, no PnL de arbitraje. La unidad viaja con el dato
+    (lección Kalshi 2026-07-28).
+    """
+    days = max(1, min(days, 120))
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d")
+    engine = get_engine()
+
+    by_status: dict[str, int] = {}
+    recorded_stats: dict[str, Any] = {}
+    with engine.connect() as conn:
+        for row in conn.execute(
+            text(
+                "SELECT status, COUNT(*) FROM consensus_signals "
+                "WHERE detected_at >= :cutoff GROUP BY 1"
+            ),
+            {"cutoff": cutoff},
+        ):
+            by_status[str(row[0])] = row[1]
+        rec = conn.execute(
+            text(
+                "SELECT COUNT(*), ROUND(AVG(net_edge_pp), 4), ROUND(MAX(net_edge_pp), 4), "
+                "ROUND(AVG(books_count), 1), ROUND(COALESCE(SUM(theoretical_ev_usd), 0), 4) "
+                "FROM consensus_signals WHERE detected_at >= :cutoff "
+                "AND status = 'shadow_recorded'"
+            ),
+            {"cutoff": cutoff},
+        ).one()
+        recorded_stats = {
+            "count": rec[0],
+            "net_edge_pp_avg": rec[1],
+            "net_edge_pp_max": rec[2],
+            "books_count_avg": rec[3],
+            "theoretical_ev_usd": rec[4],
+        }
+        top = [
+            {
+                "detected_at": str(row[0]),
+                "question": row[1],
+                "side": row[2],
+                "subject_team": row[3],
+                "fair_prob": row[4],
+                "market_ask": row[5],
+                "net_edge_pp": row[6],
+                "books": row[7],
+            }
+            for row in conn.execute(
+                text(
+                    "SELECT detected_at, substr(question, 1, 80), side, subject_team, "
+                    "fair_prob, market_ask, ROUND(net_edge_pp, 4), books_count "
+                    "FROM consensus_signals WHERE detected_at >= :cutoff "
+                    "AND status = 'shadow_recorded' ORDER BY net_edge_pp DESC LIMIT 10"
+                ),
+                {"cutoff": cutoff},
+            )
+        ]
+
+    from src.clients.odds_api import OddsApiClient
+
+    return {
+        "days_requested": days,
+        "cutoff": cutoff,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "by_status": by_status,
+        "shadow_recorded": recorded_stats,
+        "top_10_recorded": top,
+        "odds_api_quota_remaining": OddsApiClient.quota_remaining,
+        "odds_api_quota_breaker_active": OddsApiClient.quota_breaker_active(),
+        "note": (
+            "Motor 2 (consenso sportsbooks) en SHADOW: detecta, no ejecuta. "
+            "Edges en PUNTOS de probabilidad (pp), EV != PnL (apuesta "
+            "direccional). Contexto a priori: esta misma tesis perdio -$432 "
+            "reales en Kalshi — esto es el re-test barato en otro venue. "
+            "edge_too_high = partido mal emparejado o cuotas stale, no señal."
+        ),
+    }
+
+
 @app.get("/stats/multi")
 async def stats_multi(days: int = 30) -> dict[str, Any]:
     """
@@ -350,7 +441,7 @@ async def stats_multi(days: int = 30) -> dict[str, Any]:
         "by_direction": by_direction,
         "top_10_recorded": top,
         "note": (
-            "Motor 2 (neg-risk) en SHADOW: detecta, no ejecuta. net_edge_pct = "
+            "Motor 3 (neg-risk) en SHADOW: detecta, no ejecuta. net_edge_pct = "
             "% del capital comprometido por set, neto de fees+slippage. "
             "edge_too_high_fantasma alto = grupos incompletos o libros stale, "
             "no oportunidad (anti-fantasma). El top solo lista shadow_recorded."

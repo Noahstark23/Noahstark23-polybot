@@ -97,7 +97,7 @@ def client_con_m2(initialized_db):
         s.add(FunnelSnapshot(cycle_ts=_day(0)))
         s.add(
             FunnelSnapshot(
-                motor="motor_2", cycle_ts=_day(0), edges_recorded=1, theoretical_pnl_usd=0.9
+                motor="motor_3", cycle_ts=_day(0), edges_recorded=1, theoretical_pnl_usd=0.9
             )
         )
         s.add(
@@ -124,14 +124,14 @@ def client_con_m2(initialized_db):
 
 def test_stats_daily_separa_motores(client_con_m2):
     """El agregado enmascara (lección auditoría Kalshi 07-18): las claves viejas
-    quedan como motor 1 (compat) y el motor 2 va aparte con prefijo m2_."""
+    quedan como motor 1 (compat) y el motor 2 va aparte con prefijo m3_."""
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     body = client_con_m2.get("/stats/daily").json()
     bucket = body["daily"][today]
     assert bucket["funnel_cycles"] == 2  # motor 1 solamente
     assert bucket["theoretical_pnl_usd"] == 0.5
-    assert bucket["m2_funnel_cycles"] == 1
-    assert bucket["m2_theoretical_pnl_usd"] == 0.9
+    assert bucket["m3_funnel_cycles"] == 1
+    assert bucket["m3_theoretical_pnl_usd"] == 0.9
 
 
 def test_stats_multi_distribucion_y_fantasmas(client_con_m2):

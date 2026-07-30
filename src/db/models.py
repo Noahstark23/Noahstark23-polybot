@@ -198,6 +198,53 @@ class MultiEdgeWindow(SQLModel, table=True):
     detected_at: datetime = Field(default_factory=utc_now, index=True)
 
 
+class ConsensusSignal(SQLModel, table=True):
+    """
+    Señal del Motor 2 (consenso de sportsbooks vía The Odds API, F2 shadow).
+
+    UNIDADES (una columna, una unidad — lección Kalshi 2026-07-28):
+      - probabilidades (`fair_prob`, `market_ask`) en fracción 0.0–1.0
+      - los edge en `_pp` = PUNTOS de probabilidad (fair − ask, ×100). NO es
+        "% del capital" como los `_pct` de motor 1/3 — por eso el sufijo es
+        distinto a propósito.
+      - `theoretical_ev_usd` es VALOR ESPERADO, no PnL garantizado: esta tesis
+        es direccional (a diferencia del arbitraje de M1/M3, acá se puede
+        perder aunque el edge sea real).
+    """
+
+    __tablename__ = "consensus_signals"
+
+    id: int | None = Field(default=None, primary_key=True)
+    condition_id: str = Field(index=True, max_length=100)
+    question: str = Field(max_length=500)
+    side: str = Field(max_length=5)  # "YES" | "NO"
+
+    # Emparejamiento con The Odds API (reconstrucción exacta del match)
+    sport_key: str = Field(max_length=50)
+    odds_event_id: str = Field(max_length=100)
+    home_team: str = Field(max_length=100)
+    away_team: str = Field(max_length=100)
+    subject_team: str = Field(max_length=100)  # el equipo que el YES afirma
+    commence_time_iso: str | None = Field(default=None, max_length=40)
+    books_count: int  # books que entraron al consenso
+
+    fair_prob: float  # consenso de-vig (mediana entre books), 0.0-1.0
+    market_ask: float  # ask del lado señalado en Polymarket, 0.0-1.0
+    gross_edge_pp: float  # (fair - ask) * 100
+    net_edge_pp: float  # gross - fee - slippage, en pp
+
+    theoretical_size_contracts: float
+    theoretical_ev_usd: float
+
+    status: str = Field(index=True, max_length=30)
+    # shadow_recorded | below_min_edge | edge_too_high | no_book |
+    # low_liquidity | risk_blocked
+    risk_approved: bool | None = None
+    risk_reason: str | None = Field(default=None, max_length=300)
+
+    detected_at: datetime = Field(default_factory=utc_now, index=True)
+
+
 class FunnelSnapshot(SQLModel, table=True):
     """PolyFunnelSnapshot: métricas del funnel por ciclo del motor (§7)."""
 

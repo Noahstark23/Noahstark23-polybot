@@ -104,13 +104,25 @@ class Settings(BaseSettings):
 
     # === Motores / servicios ===
     MOTOR_1_ARBITRAGE_ENABLED: bool = True  # en F2 corre en SHADOW aunque esté true
-    # Motor 2: arbitraje multi-outcome sobre eventos neg-risk (SHADOW puro — no
-    # existe executor de M2 en el repo). Default OFF: mergear no cambia nada; se
+    # Motor 2: consenso de sportsbooks vía The Odds API (la API PAGA del proyecto,
+    # la misma que usa el M2 del bot Kalshi). SHADOW puro — sin executor en el repo.
+    # Default OFF. ADVERTENCIA escrita a priori: esta MISMA tesis perdió -$432
+    # reales en Kalshi (edge techo 0.15pp vs umbral 3pp); el shadow acá es el
+    # re-test barato en otro venue, no una apuesta.
+    MOTOR_2_CONSENSUS_ENABLED: bool = False
+    MOTOR_2_POLL_SECONDS: float = Field(300.0, ge=60, le=3600)  # cuota paga: sin martillar
+    MOTOR_2_MIN_BOOKS: int = Field(3, ge=1, le=20)  # books mínimos para un consenso válido
+    MOTOR_2_MIN_EDGE_PP: float = Field(3.0, gt=0, le=20)  # umbral de señal, en pp de prob.
+    # Anti-fantasma del M2 (heredado de Kalshi: MAX_PLAUSIBLE_EDGE=15pp): un "edge"
+    # de consenso mayor a esto es partido emparejado MAL o cuotas stale, no señal.
+    MOTOR_2_MAX_PLAUSIBLE_EDGE_PP: float = Field(15.0, gt=0, le=50)
+    # Motor 3: arbitraje multi-outcome sobre eventos neg-risk (SHADOW puro — no
+    # existe executor de M3 en el repo). Default OFF: mergear no cambia nada; se
     # enciende por env var en Coolify (mismo patrón que el pivote de universo).
     # Requiere MARKET_DISCOVERY_SOURCE=neg_risk para tener grupos que evaluar.
-    MOTOR_2_NEG_RISK_ENABLED: bool = False
-    MOTOR_2_MIN_LEGS: int = Field(3, ge=2, le=30)  # 2 patas neg-risk = un binario: territorio M1
-    MOTOR_2_TICK_SECONDS: float = Field(5.0, gt=0.5, le=60)
+    MOTOR_3_NEG_RISK_ENABLED: bool = False
+    MOTOR_3_MIN_LEGS: int = Field(3, ge=2, le=30)  # 2 patas neg-risk = un binario: territorio M1
+    MOTOR_3_TICK_SECONDS: float = Field(5.0, gt=0.5, le=60)
     DATA_CAPTURE_ENABLED: bool = True
     ANALYST_ENABLED: bool = True  # analyst_loop (§7) — veredicto diario
     # Lista de condition_ids a observar (CSV). Vacío => descubrir vía get_markets.
@@ -120,8 +132,8 @@ class Settings(BaseSettings):
     # en 585k snapshots del universo sampling — mercados con rewards = los más
     # eficientes). "all_recent" observa el long-tail: binarios activos más
     # recientes de /markets, excluyendo los del set sampling.
-    # "neg_risk" observa GRUPOS multi-outcome (eventos neg-risk con >= MOTOR_2_MIN_LEGS
-    # patas) — es el universo del Motor 2; Motor 1 igual evalúa cada pata binaria.
+    # "neg_risk" observa GRUPOS multi-outcome (eventos neg-risk con >= MOTOR_3_MIN_LEGS
+    # patas) — es el universo del Motor 3; Motor 1 igual evalúa cada pata binaria.
     MARKET_DISCOVERY_SOURCE: Literal["sampling", "all_recent", "neg_risk"] = "sampling"
     DISCOVERY_MAX_PAGES: int = Field(200, gt=0, le=1000)
     ENGINE_TICK_SECONDS: float = Field(2.0, gt=0.1, le=60)
@@ -134,6 +146,15 @@ class Settings(BaseSettings):
     RETENTION_MARKET_SNAPSHOTS_DAYS: int = Field(30, ge=1)
     RETENTION_FUNNEL_SNAPSHOTS_DAYS: int = Field(90, ge=7)
     RETENTION_MULTI_EDGE_WINDOWS_DAYS: int = Field(90, ge=7)
+    RETENTION_CONSENSUS_SIGNALS_DAYS: int = Field(90, ge=7)
+
+    # === The Odds API (Motor 2 — API PAGA, cuota mensual limitada) ===
+    ODDS_API_KEY: str = ""  # secret en Coolify; JAMÁS en el repo ni en logs
+    ODDS_API_BASE_URL: str = "https://api.the-odds-api.com/v4"
+    ODDS_API_SPORT_KEYS: str = "baseball_mlb"  # CSV; parseado por la property (ver abajo)
+    ODDS_API_REGIONS: str = "us,eu"
+    ODDS_API_CACHE_TTL_SEC: float = Field(240.0, ge=0)  # anti-quema de créditos
+    ODDS_API_QUOTA_COOLDOWN_SEC: float = Field(21600.0, ge=60)  # 6h sin red tras agotar cuota
     # Disco libre mínimo antes de podar agresivo (telemetría se sacrifica,
     # la captura/detección NUNCA se gatea)
     DISK_MIN_FREE_GB: float = Field(2.0, gt=0)
@@ -213,6 +234,16 @@ class Settings(BaseSettings):
     @property
     def watched_condition_ids(self) -> list[str]:
         return [c.strip() for c in self.WATCHED_CONDITION_IDS.split(",") if c.strip()]
+
+    @property
+    def odds_api_sport_keys(self) -> list[str]:
+        """
+        CSV parseado CON strip por elemento. Bug real del bot Kalshi (runbook
+        PASO 0 #5): "baseball_mlb ,soccer_x" con espacio antes de la coma dejaba
+        el espacio DENTRO del valor porque el str se usaba plano — acá el panel
+        de Coolify puede escribir lo que quiera y el valor sale limpio igual.
+        """
+        return [k.strip() for k in self.ODDS_API_SPORT_KEYS.split(",") if k.strip()]
 
 
 # Lazy singleton

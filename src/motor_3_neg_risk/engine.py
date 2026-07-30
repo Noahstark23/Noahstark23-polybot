@@ -1,5 +1,5 @@
 """
-Motor 2 — Arbitraje multi-outcome sobre eventos neg-risk (F2: SHADOW puro).
+Motor 3 — Arbitraje multi-outcome sobre eventos neg-risk (F2: SHADOW puro).
 
 LA TESIS (heredada del motor que ganó en Kalshi): en un evento neg-risk con N
 outcomes mutuamente excluyentes, exactamente UNO resuelve YES. Entonces:
@@ -23,7 +23,7 @@ Lecciones del bot Kalshi aplicadas acá (docs/lecciones_kalshi.md):
     escribe una fila por tick; tick propio más lento que el binario.
   - Una columna, una unidad: tabla propia multi_edge_windows, todos los *_pct
     en % del capital comprometido por set.
-  - El agregado enmascara: FunnelSnapshot lleva motor="motor_2".
+  - El agregado enmascara: FunnelSnapshot lleva motor="motor_3".
   - Fee exacto desde el día 1: fórmula oficial del CLOB por pata + slippage
     por pata.
 """
@@ -44,7 +44,7 @@ from src.math.fees import multi_outcome_edge
 from src.risk.manager import RiskManager
 from src.utils.config import Settings, get_settings
 
-MOTOR = "motor_2"
+MOTOR = "motor_3"
 
 
 @dataclass
@@ -199,7 +199,7 @@ class NegRiskEngine:
             skips["no_groups"] = 1
         else:
             for group_id, markets in capture.neg_risk_groups.items():
-                if len(markets) < self.settings.MOTOR_2_MIN_LEGS:
+                if len(markets) < self.settings.MOTOR_3_MIN_LEGS:
                     skips["group_too_small"] = skips.get("group_too_small", 0) + 1
                     continue
                 groups_evaluated += 1
@@ -263,8 +263,8 @@ class NegRiskEngine:
 
     async def run(self, stop_event: asyncio.Event) -> None:
         logger.info(
-            f"Motor 2 (neg-risk multi-outcome) en SHADOW — tick={self.settings.MOTOR_2_TICK_SECONDS}s, "
-            f"min_legs={self.settings.MOTOR_2_MIN_LEGS}, min_edge={self.settings.MIN_EDGE_PCT}%, "
+            f"Motor 3 (neg-risk multi-outcome) en SHADOW — tick={self.settings.MOTOR_3_TICK_SECONDS}s, "
+            f"min_legs={self.settings.MOTOR_3_MIN_LEGS}, min_edge={self.settings.MIN_EDGE_PCT}%, "
             f"anti-fantasma>{self.settings.MIN_EDGE_PCT_MAX}% — SIN executor (no existe en el repo)"
         )
         while not stop_event.is_set():
@@ -272,14 +272,14 @@ class NegRiskEngine:
                 summary = self.tick()
                 if summary["edges_recorded"]:
                     logger.info(
-                        f"M2 tick: grupos={summary['groups_evaluated']} "
+                        f"M3 tick: grupos={summary['groups_evaluated']} "
                         f"recorded={summary['edges_recorded']} skips={summary['skips']}"
                     )
             except Exception:
-                logger.exception("Error en tick del motor 2 (sigo)")
+                logger.exception("Error en tick del motor 3 (sigo)")
             try:
                 await asyncio.wait_for(
-                    stop_event.wait(), timeout=self.settings.MOTOR_2_TICK_SECONDS
+                    stop_event.wait(), timeout=self.settings.MOTOR_3_TICK_SECONDS
                 )
                 return
             except TimeoutError:
@@ -291,7 +291,7 @@ def create_service():
     Factory para el runner. A diferencia del Motor 1, acá NO hay rama de
     executor: el motor es shadow por construcción hasta que exista el diseño
     de ejecución multi-pata del gate F2→F3 (hard-leg-first) y el humano lo
-    apruebe. Encender MOTOR_2_NEG_RISK_ENABLED sólo enciende la DETECCIÓN.
+    apruebe. Encender MOTOR_3_NEG_RISK_ENABLED sólo enciende la DETECCIÓN.
     """
     engine = NegRiskEngine(get_settings())
     return engine.run
