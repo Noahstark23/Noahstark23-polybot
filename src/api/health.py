@@ -146,6 +146,12 @@ async def stats_daily(days: int = 30) -> dict[str, Any]:
     snapshots de mercado, eventos de libro, gaps, ciclos del motor, edges
     shadow, PnL teórico y veredicto del analyst.
     """
+    # NOTA de sargabilidad (incidente Kalshi 2026-07-28: consultar el endpoint
+    # hermano CONGELÓ el bot): `WHERE date(col) >= x` envuelve la columna en una
+    # función y ANULA su índice → full scan. El date() se queda en el
+    # SELECT/GROUP BY; el WHERE compara la columna DESNUDA — los timestamps se
+    # guardan como ISO, así que el orden lexicográfico contra 'YYYY-MM-DD'
+    # coincide con el cronológico. Regla: nunca envolver la columna del WHERE.
     days = max(1, min(days, 120))
     cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d")
     engine = get_engine()
@@ -162,19 +168,28 @@ async def stats_daily(days: int = 30) -> dict[str, Any]:
 
     _fill(
         "SELECT date(captured_at), COUNT(*) FROM market_snapshots "
-        "WHERE date(captured_at) >= :cutoff GROUP BY 1",
+        "WHERE captured_at >= :cutoff GROUP BY 1",
         ["market_snapshots"],
     )
     _fill(
         "SELECT date(received_at), COUNT(*), COALESCE(SUM(is_gap), 0) FROM orderbook_events "
-        "WHERE date(received_at) >= :cutoff GROUP BY 1",
+        "WHERE received_at >= :cutoff GROUP BY 1",
         ["orderbook_events", "gaps"],
+    )
+    # Funnel POR MOTOR (lección de la auditoría Kalshi 07-18: el agregado
+    # enmascara). Las claves viejas siguen siendo el motor 1 (compat con los
+    # reportes del agente web); el motor 2 va con prefijo m2_.
+    _fill(
+        "SELECT date(cycle_ts), COUNT(*), COALESCE(SUM(edges_recorded), 0), "
+        "ROUND(COALESCE(SUM(theoretical_pnl_usd), 0), 4) FROM funnel_snapshots "
+        "WHERE cycle_ts >= :cutoff AND COALESCE(motor, 'motor_1') = 'motor_1' GROUP BY 1",
+        ["funnel_cycles", "edges_recorded", "theoretical_pnl_usd"],
     )
     _fill(
         "SELECT date(cycle_ts), COUNT(*), COALESCE(SUM(edges_recorded), 0), "
         "ROUND(COALESCE(SUM(theoretical_pnl_usd), 0), 4) FROM funnel_snapshots "
-        "WHERE date(cycle_ts) >= :cutoff GROUP BY 1",
-        ["funnel_cycles", "edges_recorded", "theoretical_pnl_usd"],
+        "WHERE cycle_ts >= :cutoff AND motor = 'motor_2' GROUP BY 1",
+        ["m2_funnel_cycles", "m2_edges_recorded", "m2_theoretical_pnl_usd"],
     )
     _fill(
         "SELECT date, verdict FROM analyst_verdicts WHERE date >= :cutoff GROUP BY 1",
@@ -200,8 +215,11 @@ async def stats_edges(days: int = 30) -> dict[str, Any]:
     days = max(1, min(days, 120))
     cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d")
     engine = get_engine()
+    # WHERE sargable — misma regla que /stats/daily (el date(col) del original
+    # anulaba el índice; con market_snapshots a 28.7k filas/día no dolía TODAVÍA,
+    # pero es la misma bomba que congeló el bot Kalshi con 13M/día).
     base_where = (
-        "FROM market_snapshots WHERE date(captured_at) >= :cutoff "
+        "FROM market_snapshots WHERE captured_at >= :cutoff "
         "AND best_ask_yes IS NOT NULL AND best_ask_no IS NOT NULL"
     )
     with engine.connect() as conn:
@@ -260,6 +278,82 @@ async def stats_edges(days: int = 30) -> dict[str, Any]:
             "fees+slippage. counts_above en cero = el universo observado no "
             "presenta ineficiencia; counts_above>0 con edges_recorded=0 = el "
             "umbral/costos filtran todo (recalibrar por config)."
+        ),
+    }
+
+
+@app.get("/stats/multi")
+async def stats_multi(days: int = 30) -> dict[str, Any]:
+    """
+    Distribución del edge multi-outcome del Motor 2 (read-only, lo consume el
+    agente web sin SQL). Por dirección: ventanas por status del pipeline,
+    distribución del edge NETO y top-10. UNIDAD ÚNICA: net_edge_pct es % del
+    capital comprometido por set — acá no conviven z-scores ni centavos
+    (lección Kalshi 2026-07-28: la columna polimórfica envenena al lector).
+    """
+    days = max(1, min(days, 120))
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d")
+    engine = get_engine()
+
+    by_direction: dict[str, dict[str, Any]] = {}
+    with engine.connect() as conn:
+        for row in conn.execute(
+            text(
+                "SELECT direction, COUNT(*), "
+                "SUM(CASE WHEN status = 'shadow_recorded' THEN 1 ELSE 0 END), "
+                "SUM(CASE WHEN status = 'edge_too_high' THEN 1 ELSE 0 END), "
+                "SUM(CASE WHEN status = 'low_liquidity' THEN 1 ELSE 0 END), "
+                "SUM(CASE WHEN status = 'risk_blocked' THEN 1 ELSE 0 END), "
+                "ROUND(AVG(net_edge_pct), 4), ROUND(MAX(net_edge_pct), 4), "
+                "ROUND(AVG(legs), 1), "
+                "ROUND(COALESCE(SUM(CASE WHEN status = 'shadow_recorded' "
+                "THEN theoretical_pnl_usd ELSE 0 END), 0), 4) "
+                "FROM multi_edge_windows WHERE detected_at >= :cutoff GROUP BY 1"
+            ),
+            {"cutoff": cutoff},
+        ):
+            by_direction[str(row[0])] = {
+                "windows_total": row[1],
+                "shadow_recorded": row[2] or 0,
+                "edge_too_high_fantasma": row[3] or 0,
+                "low_liquidity": row[4] or 0,
+                "risk_blocked": row[5] or 0,
+                "net_edge_pct_avg": row[6],
+                "net_edge_pct_max": row[7],
+                "legs_avg": row[8],
+                "theoretical_pnl_usd": row[9],
+            }
+        top = [
+            {
+                "detected_at": str(row[0]),
+                "neg_risk_market_id": row[1],
+                "direction": row[2],
+                "legs": row[3],
+                "net_edge_pct": row[4],
+                "status": row[5],
+            }
+            for row in conn.execute(
+                text(
+                    "SELECT detected_at, neg_risk_market_id, direction, legs, "
+                    "ROUND(net_edge_pct, 4), status FROM multi_edge_windows "
+                    "WHERE detected_at >= :cutoff AND status = 'shadow_recorded' "
+                    "ORDER BY net_edge_pct DESC LIMIT 10"
+                ),
+                {"cutoff": cutoff},
+            )
+        ]
+
+    return {
+        "days_requested": days,
+        "cutoff": cutoff,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "by_direction": by_direction,
+        "top_10_recorded": top,
+        "note": (
+            "Motor 2 (neg-risk) en SHADOW: detecta, no ejecuta. net_edge_pct = "
+            "% del capital comprometido por set, neto de fees+slippage. "
+            "edge_too_high_fantasma alto = grupos incompletos o libros stale, "
+            "no oportunidad (anti-fantasma). El top solo lista shadow_recorded."
         ),
     }
 

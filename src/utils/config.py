@@ -104,6 +104,13 @@ class Settings(BaseSettings):
 
     # === Motores / servicios ===
     MOTOR_1_ARBITRAGE_ENABLED: bool = True  # en F2 corre en SHADOW aunque esté true
+    # Motor 2: arbitraje multi-outcome sobre eventos neg-risk (SHADOW puro — no
+    # existe executor de M2 en el repo). Default OFF: mergear no cambia nada; se
+    # enciende por env var en Coolify (mismo patrón que el pivote de universo).
+    # Requiere MARKET_DISCOVERY_SOURCE=neg_risk para tener grupos que evaluar.
+    MOTOR_2_NEG_RISK_ENABLED: bool = False
+    MOTOR_2_MIN_LEGS: int = Field(3, ge=2, le=30)  # 2 patas neg-risk = un binario: territorio M1
+    MOTOR_2_TICK_SECONDS: float = Field(5.0, gt=0.5, le=60)
     DATA_CAPTURE_ENABLED: bool = True
     ANALYST_ENABLED: bool = True  # analyst_loop (§7) — veredicto diario
     # Lista de condition_ids a observar (CSV). Vacío => descubrir vía get_markets.
@@ -113,7 +120,9 @@ class Settings(BaseSettings):
     # en 585k snapshots del universo sampling — mercados con rewards = los más
     # eficientes). "all_recent" observa el long-tail: binarios activos más
     # recientes de /markets, excluyendo los del set sampling.
-    MARKET_DISCOVERY_SOURCE: Literal["sampling", "all_recent"] = "sampling"
+    # "neg_risk" observa GRUPOS multi-outcome (eventos neg-risk con >= MOTOR_2_MIN_LEGS
+    # patas) — es el universo del Motor 2; Motor 1 igual evalúa cada pata binaria.
+    MARKET_DISCOVERY_SOURCE: Literal["sampling", "all_recent", "neg_risk"] = "sampling"
     DISCOVERY_MAX_PAGES: int = Field(200, gt=0, le=1000)
     ENGINE_TICK_SECONDS: float = Field(2.0, gt=0.1, le=60)
     RECONCILE_INTERVAL_SECONDS: int = Field(300, ge=30, le=3600)
@@ -124,6 +133,7 @@ class Settings(BaseSettings):
     RETENTION_ORDERBOOK_EVENTS_DAYS: int = Field(14, ge=1)
     RETENTION_MARKET_SNAPSHOTS_DAYS: int = Field(30, ge=1)
     RETENTION_FUNNEL_SNAPSHOTS_DAYS: int = Field(90, ge=7)
+    RETENTION_MULTI_EDGE_WINDOWS_DAYS: int = Field(90, ge=7)
     # Disco libre mínimo antes de podar agresivo (telemetría se sacrifica,
     # la captura/detección NUNCA se gatea)
     DISK_MIN_FREE_GB: float = Field(2.0, gt=0)

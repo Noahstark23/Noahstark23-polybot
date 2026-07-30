@@ -3,6 +3,62 @@
 Fase activa: **F2 en shadow con GATE ROJO por causa de mercado** (no de código).
 Bot desplegado y capturando desde 2026-07-03. Cero órdenes reales.
 
+## Iteración 2026-07-30 — Motor 2 (neg-risk multi-outcome) en SHADOW
+
+**Qué es.** La tesis del motor ganador de Kalshi (arbitraje intra-venue — su M1
+cerró julio +$33.37, único motor positivo) extendida a multi-outcome, que es
+donde la detección de Kalshi midió edge REAL (3.13pp, motor REST): en un evento
+neg-risk de N outcomes excluyentes, `buy_yes_all` paga 1.00 y `buy_no_all` paga
+N−1; si el costo baja del payout, es arbitraje sin riesgo de resolución. Es la
+"opción B" que este handoff dejó documentada el 07-23.
+
+**Estado: código mergeable, motor APAGADO.** `MOTOR_2_NEG_RISK_ENABLED=false` y
+`MARKET_DISCOVERY_SOURCE` sigue en `sampling` — mergear no cambia nada. Se
+enciende por env vars en Coolify (dos: `neg_risk` + el flag), mismo patrón que
+el pivote. **No existe executor de M2 en el repo**: encenderlo enciende SOLO la
+detección.
+
+**Lecciones de botkalshi aplicadas en el diseño (no después):**
+- El riesgo #1 del universo multi-outcome es el GRUPO INCOMPLETO (una pata que
+  el discovery no vio → las restantes suman <1 trivialmente → edge fantasma
+  puro). Tres defensas en capas: conteo crudo vs extraído por grupo (mismatch →
+  grupo descartado), paginación cortada → discovery entero descartado, y el
+  anti-fantasma del engine como última red.
+- Una columna, una unidad: tabla propia `multi_edge_windows`, todos los `_pct`
+  en % del capital comprometido por set (documentado en el modelo).
+- El agregado enmascara: `funnel_snapshots.motor` (migración ADD COLUMN
+  idempotente; filas viejas quedan `motor_1`). `/stats/daily` separa `m2_*`.
+- Nada sin tope: de-dupe por (grupo, dirección) — un arb persistente es UNA
+  fila, no una por tick; retención de la tabla nueva en el MISMO commit.
+- WHERE sargable: se corrigieron TODOS los `WHERE date(col) >=` de health.py
+  (el mismo patrón congeló el bot Kalshi el 07-28 con una tabla de 13M
+  filas/día). La regla: date() en SELECT/GROUP BY sí, en WHERE jamás.
+- Fee exacto + slippage POR PATA desde el día 1 (N patas = N libros que se
+  pueden mover).
+
+**Gate F2 de Motor 2 (criterios A PRIORI — se escriben ahora, no al ver datos):**
+- [ ] ≥ 7 días de shadow continuo con grupos observados > 0 (si el universo
+      neg-risk de Polymarket no da grupos completos, eso es un resultado: se
+      documenta y se archiva — barato).
+- [ ] `edge_too_high_fantasma / windows_total < 20%` en `/stats/multi`: si los
+      fantasmas dominan, el guard de grupos está fallando y NINGÚN número de
+      este motor es confiable hasta arreglarlo.
+- [ ] PnL teórico > 0 con edges `shadow_recorded` en ≥ 3 días distintos (un
+      solo día puede ser un evento raro, no una ineficiencia explotable).
+- [ ] Para pasar a F3 hace falta ADEMÁS el diseño de ejecución multi-pata
+      aprobado por el humano: hard-leg-first (la pata más fina PRIMERO),
+      presupuesto de rollback, y qué pasa con un fill parcial del set — el
+      motor REST de Kalshi murió exactamente ahí (73% rollback) y ese
+      post-mortem es el requisito de entrada, no una nota al pie.
+
+**Cómo encenderlo (humano, en Coolify):** `MARKET_DISCOVERY_SOURCE=neg_risk` +
+`MOTOR_2_NEG_RISK_ENABLED=true` + redeploy. Verificar: log
+`Motor 2 (neg-risk multi-outcome) en SHADOW`, `/stats/multi` responde, y
+`/stats/daily` empieza a mostrar `m2_funnel_cycles`. OJO: cambiar el discovery
+a `neg_risk` cambia también el universo del Motor 1 (pasa a evaluar las patas
+binarias de los grupos) — el experimento long-tail `all_recent` y este son
+mutuamente excluyentes; decidir cuál corre primero es del humano.
+
 ## Evaluación de gates 2026-07-23 (datos reales de /stats/daily, 21 días)
 
 - **F0: 🟢 CERRADO.** Contenedor healthy semanas; sólo un reinicio (07-10).

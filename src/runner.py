@@ -37,6 +37,7 @@ from src.utils.logging import setup_logging
 SERVICE_SPECS: list[tuple[str, str, str, str]] = [
     ("data_capture", "src.strategies.data_capture", "create_service", "DATA_CAPTURE_ENABLED"),
     ("motor_1_arbitrage", "src.motor_1_arbitrage.engine", "create_service", "MOTOR_1_ARBITRAGE_ENABLED"),
+    ("motor_2_neg_risk", "src.motor_2_neg_risk.engine", "create_service", "MOTOR_2_NEG_RISK_ENABLED"),
     ("analyst", "src.analytics.analyst_loop", "create_service", "ANALYST_ENABLED"),
     ("maintenance", "src.storage.maintenance", "create_service", "MAINTENANCE_ENABLED"),
     ("user_channel", "src.execution.service", "create_service", "TRADING_ENABLED"),
