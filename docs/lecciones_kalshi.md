@@ -66,6 +66,28 @@ decisión de diseño nueva se contrasta contra estas reglas.
 - **Ejecución multi-pata no atómica = riesgo de pata coja.** El rollback de
   pierna del executor es mitigación, no garantía; reconciliación detecta el
   residuo. Para cross-venue (F4): guardarraíl hard-leg-first.
+- **Un costo que no se registra no existe para ninguna métrica** (Kalshi
+  2026-07-28). El fee de M1 se calculaba, se descontaba del PnL y se tiraba sin
+  persistir: `/stats/motors` reportaba `fees_usd: 0.00` sobre 519 trades. El
+  criterio de decisión era "PnL/trade > 2 × fee promedio" → comparaba contra
+  cero y **aprobaba exactamente al motor que estaba diseñado para descartar**.
+  Regla: todo campo que alimenta un criterio se persiste en el mismo commit en
+  que se usa, y el endpoint publica su **cobertura** (`fees_coverage_pct`); con
+  el dato incompleto el veredicto es `indeterminado`, no un default optimista.
+  En Polybot: `estimated_edge_pct` y los costos del funnel siguen esta regla —
+  si falta el dato, el gate no se declara verde.
+- **Una columna llamada `*_pct` que no guarda un porcentaje envenena todo lo que
+  la lea** (Kalshi 2026-07-28). `edge_windows.edge_pct` guardaba % para los
+  motores binarios, z-scores para el de OFI y centavos para el de spillover. El
+  endpoint aplicaba buckets en puntos porcentuales a las tres: "máximo
+  2.678,83pp", 1.349 filas falsamente sobre el guardarraíl de plausibilidad de
+  8pp, y contadores `>0/>1/>3pp` idénticos que se leyeron como artefacto de
+  datos cuando eran el umbral del propio detector (no hay señal bajo `z_min`).
+  Regla: una columna, una unidad. Si una tabla es compartida por estrategias que
+  miden cosas distintas, la unidad se declara junto al dato y el consumidor la
+  respeta — nunca se infiere del nombre. Polybot hoy tiene una sola unidad
+  (`net_edge_pct` en %); si F4 agrega un motor con otra métrica, va en columna
+  propia o con `unit` explícito.
 
 ## Patrones meta del vault (asunciones refutadas por la data)
 

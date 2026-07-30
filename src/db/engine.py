@@ -69,10 +69,36 @@ def reset_engine_for_testing() -> None:
     _engine = None
 
 
+# Migraciones ADD COLUMN para la DB productiva existente. create_all crea tablas
+# NUEVAS con el schema actual pero NO altera tablas existentes (patrón heredado de
+# botkalshi: SQLite sin historia de migración). ADD COLUMN nullable/con default es
+# metadata-only en SQLite — instantáneo aun con la tabla grande. Idempotente.
+_MIGRATIONS: list[tuple[str, str, str]] = [
+    # Motor 2 (2026-07-28): discriminador de motor en el funnel — el agregado
+    # enmascara (lección de la auditoría Kalshi 07-18).
+    ("funnel_snapshots", "motor", "VARCHAR(20) DEFAULT 'motor_1'"),
+]
+
+
+def apply_migrations(engine) -> None:
+    """ADD COLUMN pendientes en tablas que ya existen. Sólo SQLite."""
+    if not get_settings().DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        for table, column, col_type in _MIGRATIONS:
+            rows = conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
+            existing = {r[1] for r in rows}
+            if not existing or column in existing:
+                continue  # tabla inexistente (la crea create_all) o ya migrada
+            conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+            logger.info(f"Migración: {table}.{column} agregada")
+
+
 def init_db() -> None:
-    """Crear tablas si no existen. Idempotente."""
+    """Crear tablas si no existen + migraciones ADD COLUMN. Idempotente."""
     engine = get_engine()
     SQLModel.metadata.create_all(engine)
+    apply_migrations(engine)
     logger.info("DB inicializada")
 
 

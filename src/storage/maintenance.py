@@ -27,7 +27,14 @@ from sqlmodel import delete, text
 
 from src.api.health import BotState
 from src.db.engine import get_engine, get_session
-from src.db.models import FunnelSnapshot, MarketSnapshot, OrderbookEvent, RiskEvent
+from src.db.models import (
+    ConsensusSignal,
+    FunnelSnapshot,
+    MarketSnapshot,
+    MultiEdgeWindow,
+    OrderbookEvent,
+    RiskEvent,
+)
 from src.utils.config import Settings, get_settings
 
 # (modelo, campo timestamp, nombre del setting de retención)
@@ -35,6 +42,10 @@ RETENTION_TABLES = [
     (OrderbookEvent, OrderbookEvent.received_at, "RETENTION_ORDERBOOK_EVENTS_DAYS"),
     (MarketSnapshot, MarketSnapshot.captured_at, "RETENTION_MARKET_SNAPSHOTS_DAYS"),
     (FunnelSnapshot, FunnelSnapshot.cycle_ts, "RETENTION_FUNNEL_SNAPSHOTS_DAYS"),
+    # Motores 2 y 3 nacen CON retención (nada sin tope: toda tabla nueva entra
+    # acá en el mismo commit en que se crea, no cuando explota).
+    (MultiEdgeWindow, MultiEdgeWindow.detected_at, "RETENTION_MULTI_EDGE_WINDOWS_DAYS"),
+    (ConsensusSignal, ConsensusSignal.detected_at, "RETENTION_CONSENSUS_SIGNALS_DAYS"),
 ]
 
 

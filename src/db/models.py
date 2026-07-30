@@ -160,12 +160,101 @@ class EdgeWindow(SQLModel, table=True):
     detected_at: datetime = Field(default_factory=utc_now, index=True)
 
 
+class MultiEdgeWindow(SQLModel, table=True):
+    """
+    Edge multi-outcome detectado por el Motor 2 (neg-risk, F2 shadow).
+
+    TABLA PROPIA, no una fila más de edge_windows con un discriminador
+    (lección Kalshi 2026-07-28: edge_pct polimórfica — %, z-scores y centavos
+    en la misma columna — produjo "max 2678pp" y 1349 falsos sospechosos).
+    Acá hay UNA unidad: todos los *_pct son % del capital comprometido por set.
+    """
+
+    __tablename__ = "multi_edge_windows"
+
+    id: int | None = Field(default=None, primary_key=True)
+    neg_risk_market_id: str = Field(index=True, max_length=100)
+    direction: str = Field(max_length=15)  # buy_yes_all | buy_no_all
+    legs: int  # cantidad de outcomes del set
+    legs_json: str | None = None  # JSON [{condition_id, ask}] — reconstrucción exacta
+
+    cost_per_set: float  # USDC por set (suma de asks)
+    payout_per_set: float  # 1.0 (buy_yes_all) o N-1 (buy_no_all)
+    fees_per_set: float  # fees CLOB + slippage, todas las patas
+    gross_edge_pct: float  # (payout - cost) / cost * 100
+    net_edge_pct: float  # (payout - cost - fees) / cost * 100
+
+    min_leg_depth_contracts: float  # liquidez de la pata MÁS FINA (manda ella)
+    theoretical_size_sets: float  # sets que el sizing habría comprado
+    theoretical_pnl_usd: float
+
+    # Mismo pipeline shadow que motor 1
+    status: str = Field(index=True, max_length=30)
+    # detected | edge_too_high | below_min_edge | low_liquidity |
+    # risk_blocked | shadow_recorded
+    risk_approved: bool | None = None
+    risk_reason: str | None = Field(default=None, max_length=300)
+
+    detected_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class ConsensusSignal(SQLModel, table=True):
+    """
+    Señal del Motor 2 (consenso de sportsbooks vía The Odds API, F2 shadow).
+
+    UNIDADES (una columna, una unidad — lección Kalshi 2026-07-28):
+      - probabilidades (`fair_prob`, `market_ask`) en fracción 0.0–1.0
+      - los edge en `_pp` = PUNTOS de probabilidad (fair − ask, ×100). NO es
+        "% del capital" como los `_pct` de motor 1/3 — por eso el sufijo es
+        distinto a propósito.
+      - `theoretical_ev_usd` es VALOR ESPERADO, no PnL garantizado: esta tesis
+        es direccional (a diferencia del arbitraje de M1/M3, acá se puede
+        perder aunque el edge sea real).
+    """
+
+    __tablename__ = "consensus_signals"
+
+    id: int | None = Field(default=None, primary_key=True)
+    condition_id: str = Field(index=True, max_length=100)
+    question: str = Field(max_length=500)
+    side: str = Field(max_length=5)  # "YES" | "NO"
+
+    # Emparejamiento con The Odds API (reconstrucción exacta del match)
+    sport_key: str = Field(max_length=50)
+    odds_event_id: str = Field(max_length=100)
+    home_team: str = Field(max_length=100)
+    away_team: str = Field(max_length=100)
+    subject_team: str = Field(max_length=100)  # el equipo que el YES afirma
+    commence_time_iso: str | None = Field(default=None, max_length=40)
+    books_count: int  # books que entraron al consenso
+
+    fair_prob: float  # consenso de-vig (mediana entre books), 0.0-1.0
+    market_ask: float  # ask del lado señalado en Polymarket, 0.0-1.0
+    gross_edge_pp: float  # (fair - ask) * 100
+    net_edge_pp: float  # gross - fee - slippage, en pp
+
+    theoretical_size_contracts: float
+    theoretical_ev_usd: float
+
+    status: str = Field(index=True, max_length=30)
+    # shadow_recorded | below_min_edge | edge_too_high | no_book |
+    # low_liquidity | risk_blocked
+    risk_approved: bool | None = None
+    risk_reason: str | None = Field(default=None, max_length=300)
+
+    detected_at: datetime = Field(default_factory=utc_now, index=True)
+
+
 class FunnelSnapshot(SQLModel, table=True):
     """PolyFunnelSnapshot: métricas del funnel por ciclo del motor (§7)."""
 
     __tablename__ = "funnel_snapshots"
 
     id: int | None = Field(default=None, primary_key=True)
+    # Qué motor emitió el ciclo (lección Kalshi: el agregado ENMASCARA — la
+    # auditoría 07-18 encontró M2 -$432 escondido detrás de un neto "aceptable").
+    # Las filas pre-migración quedan con el default = motor_1.
+    motor: str = Field(default="motor_1", index=True, max_length=20)
     cycle_ts: datetime = Field(default_factory=utc_now, index=True)
     markets_evaluated: int = 0
     skips_json: str | None = None  # JSON {causa: count}

@@ -79,3 +79,75 @@ class TestStatsDaily:
             body = c.get("/stats/daily").json()
         assert body["daily"] == {}
         BotState.db_initialized = False
+
+
+# =====================================================
+# Motor 2: breakdown por motor en /stats/daily + /stats/multi
+# =====================================================
+
+
+@pytest.fixture()
+def client_con_m2(initialized_db):
+    from src.db.models import MultiEdgeWindow
+
+    BotState.db_initialized = True
+    with get_session() as s:
+        # motor 1: 2 ciclos, 1 edge; motor 2: 1 ciclo, 1 edge con PnL distinto
+        s.add(FunnelSnapshot(cycle_ts=_day(0), edges_recorded=1, theoretical_pnl_usd=0.5))
+        s.add(FunnelSnapshot(cycle_ts=_day(0)))
+        s.add(
+            FunnelSnapshot(
+                motor="motor_3", cycle_ts=_day(0), edges_recorded=1, theoretical_pnl_usd=0.9
+            )
+        )
+        s.add(
+            MultiEdgeWindow(
+                neg_risk_market_id="grp-1", direction="buy_yes_all", legs=3,
+                cost_per_set=0.96, payout_per_set=1.0, fees_per_set=0.006,
+                gross_edge_pct=4.17, net_edge_pct=3.54, min_leg_depth_contracts=40,
+                theoretical_size_sets=5.0, theoretical_pnl_usd=0.17,
+                status="shadow_recorded", detected_at=_day(0),
+            )
+        )
+        s.add(
+            MultiEdgeWindow(
+                neg_risk_market_id="grp-2", direction="buy_yes_all", legs=2,
+                cost_per_set=0.40, payout_per_set=1.0, fees_per_set=0.004,
+                gross_edge_pct=150.0, net_edge_pct=149.0, min_leg_depth_contracts=40,
+                theoretical_size_sets=0.0, theoretical_pnl_usd=0.0,
+                status="edge_too_high", detected_at=_day(0),
+            )
+        )
+        s.commit()
+    return TestClient(app)
+
+
+def test_stats_daily_separa_motores(client_con_m2):
+    """El agregado enmascara (lección auditoría Kalshi 07-18): las claves viejas
+    quedan como motor 1 (compat) y el motor 2 va aparte con prefijo m3_."""
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    body = client_con_m2.get("/stats/daily").json()
+    bucket = body["daily"][today]
+    assert bucket["funnel_cycles"] == 2  # motor 1 solamente
+    assert bucket["theoretical_pnl_usd"] == 0.5
+    assert bucket["m3_funnel_cycles"] == 1
+    assert bucket["m3_theoretical_pnl_usd"] == 0.9
+
+
+def test_stats_multi_distribucion_y_fantasmas(client_con_m2):
+    body = client_con_m2.get("/stats/multi").json()
+    d = body["by_direction"]["buy_yes_all"]
+    assert d["windows_total"] == 2
+    assert d["shadow_recorded"] == 1
+    assert d["edge_too_high_fantasma"] == 1  # el grupo incompleto quedó CONTADO como fantasma
+    assert d["theoretical_pnl_usd"] == 0.17
+    # el top solo lista shadow_recorded: el fantasma de 149% NO aparece como oportunidad
+    assert len(body["top_10_recorded"]) == 1
+    assert body["top_10_recorded"][0]["net_edge_pct"] == 3.54
+
+
+def test_stats_multi_db_vacia_no_rompe(initialized_db):
+    BotState.db_initialized = True
+    body = TestClient(app).get("/stats/multi").json()
+    assert body["by_direction"] == {}
+    assert body["top_10_recorded"] == []

@@ -42,6 +42,8 @@ class WatchedMarket:
     end_date_iso: str | None
     neg_risk: bool
     tick_size: float
+    # Grupo neg-risk al que pertenece (multi-outcome). "" = binario suelto.
+    neg_risk_market_id: str = ""
 
 
 def extract_binary_market(market: dict) -> WatchedMarket | None:
@@ -63,6 +65,7 @@ def extract_binary_market(market: dict) -> WatchedMarket | None:
         end_date_iso=market.get("end_date_iso"),
         neg_risk=bool(market.get("neg_risk")),
         tick_size=float(market.get("minimum_tick_size") or 0.01),
+        neg_risk_market_id=str(market.get("neg_risk_market_id") or ""),
     )
 
 
@@ -93,6 +96,8 @@ class DataCaptureService:
                     logger.exception(f"No pude cargar mercado {cid}")
         elif self.settings.MARKET_DISCOVERY_SOURCE == "all_recent":
             markets = await self._discover_all_recent(clob)
+        elif self.settings.MARKET_DISCOVERY_SOURCE == "neg_risk":
+            markets = await self._discover_neg_risk(clob)
         else:
             markets = await self._discover_sampling(clob)
         self.watched = {m.condition_id: m for m in markets if m.condition_id}
@@ -159,6 +164,87 @@ class DataCaptureService:
             f"({len(sampling_ids)} sampling excluidos) -> observando {len(picked)}"
         )
         return picked
+
+    async def _discover_neg_risk(self, clob: PolymarketClobClient) -> list[WatchedMarket]:
+        """
+        Universo del Motor 2: GRUPOS neg-risk (eventos multi-outcome donde
+        exactamente un outcome resuelve YES) con >= MOTOR_3_MIN_LEGS patas.
+
+        EL RIESGO #1 DE ESTE UNIVERSO ES EL GRUPO INCOMPLETO: si una pata del
+        evento no entra al grupo (cerrada, malformada, o fuera de las páginas
+        recorridas), las patas restantes suman < 1 TRIVIALMENTE y el "edge" que
+        el motor vería es fantasma puro — la versión multi-outcome del libro
+        stale de Kalshi. Tres defensas, las tres deliberadas:
+          1. Se cuentan TODOS los miembros crudos por grupo mientras se pagina;
+             un grupo donde extraídos != crudos se DESCARTA entero.
+          2. Grupos que tocan la última página recorrida podrían tener patas en
+             páginas nunca vistas — si la paginación se cortó por el cap de
+             DISCOVERY_MAX_PAGES (no por fin de datos), se descarta TODO el
+             discovery parcial y se loguea (mejor 0 grupos que grupos mentirosos).
+          3. El filtro anti-fantasma del engine (MIN_EDGE_PCT_MAX) queda como
+             última red: un grupo incompleto produce edges enormes, no sutiles.
+        """
+        raw_counts: dict[str, int] = {}
+        extracted: dict[str, list[WatchedMarket]] = {}
+        cursor = ""
+        exhausted = False
+        for _ in range(self.settings.DISCOVERY_MAX_PAGES):
+            page = await clob.get_markets(cursor)
+            for raw in page.get("data") or []:
+                gid = str(raw.get("neg_risk_market_id") or "")
+                if not raw.get("neg_risk") or not gid:
+                    continue
+                raw_counts[gid] = raw_counts.get(gid, 0) + 1
+                m = extract_binary_market(raw)
+                if m and m.condition_id:
+                    extracted.setdefault(gid, []).append(m)
+            cursor = page.get("next_cursor") or "LTE="
+            if cursor == "LTE=":
+                exhausted = True
+                break
+
+        if not exhausted:
+            logger.warning(
+                f"Discovery neg_risk: paginación cortada por DISCOVERY_MAX_PAGES="
+                f"{self.settings.DISCOVERY_MAX_PAGES} sin agotar /markets — grupos "
+                "potencialmente incompletos, se descarta TODO (0 grupos > grupos mentirosos)"
+            )
+            return []
+
+        min_legs = self.settings.MOTOR_3_MIN_LEGS
+        complete = {
+            gid: legs
+            for gid, legs in extracted.items()
+            if len(legs) == raw_counts.get(gid) and len(legs) >= min_legs
+        }
+        discarded = len(extracted) - len(complete)
+
+        # Los grupos más nuevos primero (mismo supuesto del pivote all_recent:
+        # la paginación va por creación y el libro nuevo está menos arbitrado),
+        # capado por MAX_WATCHED_MARKETS en PATAS (es el presupuesto real de WS).
+        markets: list[WatchedMarket] = []
+        for gid in reversed(list(complete)):
+            legs = complete[gid]
+            if len(markets) + len(legs) > self.settings.MAX_WATCHED_MARKETS:
+                break
+            markets.extend(legs)
+
+        groups_kept = len({m.neg_risk_market_id for m in markets})
+        logger.info(
+            f"Discovery neg_risk: {len(extracted)} grupos vistos, {discarded} descartados "
+            f"(incompletos o < {min_legs} patas) -> observando {groups_kept} grupos / "
+            f"{len(markets)} patas"
+        )
+        return markets
+
+    @property
+    def neg_risk_groups(self) -> dict[str, list[WatchedMarket]]:
+        """Grupos multi-outcome observados: neg_risk_market_id -> patas (lo consume M3)."""
+        groups: dict[str, list[WatchedMarket]] = {}
+        for m in self.watched.values():
+            if m.neg_risk_market_id:
+                groups.setdefault(m.neg_risk_market_id, []).append(m)
+        return {g: legs for g, legs in groups.items() if len(legs) >= 2}
 
     @property
     def token_ids(self) -> list[str]:

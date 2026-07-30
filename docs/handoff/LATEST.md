@@ -3,6 +3,119 @@
 Fase activa: **F2 en shadow con GATE ROJO por causa de mercado** (no de código).
 Bot desplegado y capturando desde 2026-07-03. Cero órdenes reales.
 
+## Iteración 2026-07-30 (bis) — Motor 2 = CONSENSO (The Odds API); neg-risk pasa a Motor 3
+
+Decisión del owner: el Motor 2 de Polybot usa **la API paga del proyecto (The
+Odds API)** — la misma tesis y la misma fuente que el Motor 2 del bot Kalshi.
+Para que la numeración quede espejada con el bot hermano (y no se crucen
+vocabularios entre agentes), el motor neg-risk construido en la iteración
+anterior se renumeró a **Motor 3** (flags `MOTOR_3_*`, funnel `motor_3`,
+claves `m3_*`; el endpoint `/stats/multi` no cambió de nombre).
+
+### Motor 2 — consenso de sportsbooks (SHADOW, apagado por default)
+
+Si el consenso de-vig de los sportsbooks le asigna a un resultado más
+probabilidad que el precio de Polymarket, hay edge direccional. **ADVERTENCIA
+escrita a priori:** esta MISMA tesis perdió **−$432 reales en Kalshi** (edge
+techo 0.15pp vs umbral de 3pp; la auditoría 07-18 la marcó para apagar). Este
+shadow es el re-test barato en OTRO venue — Polymarket puede ser menos
+eficiente contra los sportsbooks que Kalshi, o no. El gate decide con datos.
+
+Piezas (las cicatrices de Kalshi vienen incorporadas, no aprendidas de nuevo):
+- `clients/odds_api.py`: caché TTL + **breaker de cuota** (incidente 20k
+  créditos quemados en días + 544 warnings/día martillando con cuota agotada).
+  Sin key o con breaker activo: cero requests. La key JAMÁS se loguea.
+- `math/no_vig.py`: de-vig multiplicativo portado del Kalshi (probado en prod).
+- `motor_2_consensus/matcher.py`: **conservador** — ambos equipos en la
+  pregunta (palabras completas + sufijos de apodo), gate de fecha, ambigüedad
+  = descarte. Emparejar el partido equivocado es la falla catastrófica.
+- Consenso = MEDIANA entre books de-vig, mínimo `MOTOR_2_MIN_BOOKS=3`.
+- Anti-fantasma: net > 15pp = partido mal emparejado o cuotas stale (backstop
+  del incidente GER vs CUW de Kalshi: ~50pp in-play fantasma).
+- UNIDADES: edges del M2 en `_pp` (puntos de probabilidad) y `theoretical_ev`
+  (valor esperado, NO PnL — la apuesta es direccional). Sufijos distintos a
+  los `_pct` de M1/M3 a propósito.
+- `ODDS_API_SPORT_KEYS` parseado con strip por elemento (el bug del espacio en
+  el panel, Kalshi runbook PASO 0 #5, no puede repetirse acá).
+- `/stats/consensus` (GET): estados, distribución, top-10, y la CUOTA restante
+  de la API visible (`odds_api_quota_remaining`).
+
+**Activación (humano, Coolify):** `ODDS_API_KEY=<secret>` +
+`MOTOR_2_CONSENSUS_ENABLED=true` + redeploy. NO pisa el discovery: el M2 usa
+los mercados ya observados, así que convive con `sampling`/`all_recent` (para
+matchear deportes hace falta que el universo observado TENGA mercados
+deportivos — si el actual no los tiene, `no_match` va a dominar el funnel y
+eso también es un dato).
+
+**Gate F2 del M2-consenso (a priori):**
+- [ ] ≥ 7 días con el funnel mostrando `markets_evaluated > 0` y matches > 0
+      (si `no_match` domina, el universo observado no tiene deportes o el
+      matcher es demasiado estricto — se diagnostica ANTES de relajar nada).
+- [ ] Verificación MANUAL de 10 matches (humano o agente web): pregunta vs
+      partido correcto. Un solo match equivocado = motor en cuarentena hasta
+      arreglar el matcher (la falla es silenciosa y catastrófica).
+- [ ] `edge_too_high / señales < 20%`.
+- [ ] Cuota de la API: consumo mensual proyectado < 80% del plan pago.
+- [ ] Para hablar de F3: distribución de `net_edge_pp` de los shadow_recorded
+      consistente en ≥ 2 semanas — y la vara es alta porque la tesis ya perdió
+      una vez con dinero real en el venue hermano.
+
+## Iteración 2026-07-30 — Motor 3 (neg-risk multi-outcome) en SHADOW
+
+**Qué es.** La tesis del motor ganador de Kalshi (arbitraje intra-venue — su M1
+cerró julio +$33.37, único motor positivo) extendida a multi-outcome, que es
+donde la detección de Kalshi midió edge REAL (3.13pp, motor REST): en un evento
+neg-risk de N outcomes excluyentes, `buy_yes_all` paga 1.00 y `buy_no_all` paga
+N−1; si el costo baja del payout, es arbitraje sin riesgo de resolución. Es la
+"opción B" que este handoff dejó documentada el 07-23.
+
+**Estado: código mergeable, motor APAGADO.** `MOTOR_3_NEG_RISK_ENABLED=false` y
+`MARKET_DISCOVERY_SOURCE` sigue en `sampling` — mergear no cambia nada. Se
+enciende por env vars en Coolify (dos: `neg_risk` + el flag), mismo patrón que
+el pivote. **No existe executor de M3 en el repo**: encenderlo enciende SOLO la
+detección.
+
+**Lecciones de botkalshi aplicadas en el diseño (no después):**
+- El riesgo #1 del universo multi-outcome es el GRUPO INCOMPLETO (una pata que
+  el discovery no vio → las restantes suman <1 trivialmente → edge fantasma
+  puro). Tres defensas en capas: conteo crudo vs extraído por grupo (mismatch →
+  grupo descartado), paginación cortada → discovery entero descartado, y el
+  anti-fantasma del engine como última red.
+- Una columna, una unidad: tabla propia `multi_edge_windows`, todos los `_pct`
+  en % del capital comprometido por set (documentado en el modelo).
+- El agregado enmascara: `funnel_snapshots.motor` (migración ADD COLUMN
+  idempotente; filas viejas quedan `motor_1`). `/stats/daily` separa `m3_*`.
+- Nada sin tope: de-dupe por (grupo, dirección) — un arb persistente es UNA
+  fila, no una por tick; retención de la tabla nueva en el MISMO commit.
+- WHERE sargable: se corrigieron TODOS los `WHERE date(col) >=` de health.py
+  (el mismo patrón congeló el bot Kalshi el 07-28 con una tabla de 13M
+  filas/día). La regla: date() en SELECT/GROUP BY sí, en WHERE jamás.
+- Fee exacto + slippage POR PATA desde el día 1 (N patas = N libros que se
+  pueden mover).
+
+**Gate F2 de Motor 3 (criterios A PRIORI — se escriben ahora, no al ver datos):**
+- [ ] ≥ 7 días de shadow continuo con grupos observados > 0 (si el universo
+      neg-risk de Polymarket no da grupos completos, eso es un resultado: se
+      documenta y se archiva — barato).
+- [ ] `edge_too_high_fantasma / windows_total < 20%` en `/stats/multi`: si los
+      fantasmas dominan, el guard de grupos está fallando y NINGÚN número de
+      este motor es confiable hasta arreglarlo.
+- [ ] PnL teórico > 0 con edges `shadow_recorded` en ≥ 3 días distintos (un
+      solo día puede ser un evento raro, no una ineficiencia explotable).
+- [ ] Para pasar a F3 hace falta ADEMÁS el diseño de ejecución multi-pata
+      aprobado por el humano: hard-leg-first (la pata más fina PRIMERO),
+      presupuesto de rollback, y qué pasa con un fill parcial del set — el
+      motor REST de Kalshi murió exactamente ahí (73% rollback) y ese
+      post-mortem es el requisito de entrada, no una nota al pie.
+
+**Cómo encenderlo (humano, en Coolify):** `MARKET_DISCOVERY_SOURCE=neg_risk` +
+`MOTOR_3_NEG_RISK_ENABLED=true` + redeploy. Verificar: log
+`Motor 3 (neg-risk multi-outcome) en SHADOW`, `/stats/multi` responde, y
+`/stats/daily` empieza a mostrar `m3_funnel_cycles`. OJO: cambiar el discovery
+a `neg_risk` cambia también el universo del Motor 1 (pasa a evaluar las patas
+binarias de los grupos) — el experimento long-tail `all_recent` y este son
+mutuamente excluyentes; decidir cuál corre primero es del humano.
+
 ## Evaluación de gates 2026-07-23 (datos reales de /stats/daily, 21 días)
 
 - **F0: 🟢 CERRADO.** Contenedor healthy semanas; sólo un reinicio (07-10).
