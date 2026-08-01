@@ -290,6 +290,115 @@ async def stats_edges(days: int = 30) -> dict[str, Any]:
     }
 
 
+@app.get("/stats/ofi")
+async def stats_ofi(days: int = 30) -> dict[str, Any]:
+    """
+    Señales medidas del Motor 4 (OFI, read-only). UNIDADES: `zscore` es
+    adimensional (columna propia — lección Kalshi 2026-07-28); los moves en
+    `_pp` firmados desde la presión (>0 = el precio siguió a la presión =
+    momentum; <0 = contrarian). La tabla NO tiene |z| < z_min por diseño: es
+    el umbral del detector, no un agujero de datos. La PREGUNTA del gate es
+    la mediana de move60_pp: si es consistentemente != 0, hay tesis.
+    """
+    days = max(1, min(days, 120))
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d")
+    engine = get_engine()
+    with engine.connect() as conn:
+        totals = conn.execute(
+            text(
+                "SELECT COUNT(*), ROUND(AVG(move30_pp), 4), ROUND(AVG(move60_pp), 4), "
+                "ROUND(MIN(move60_pp), 4), ROUND(MAX(move60_pp), 4), "
+                "SUM(CASE WHEN move60_pp > 0 THEN 1 ELSE 0 END), "
+                "ROUND(AVG(ABS(zscore)), 2) "
+                "FROM ofi_signals WHERE created_at >= :cutoff"
+            ),
+            {"cutoff": cutoff},
+        ).one()
+        n = totals[0] or 0
+        # Mediana por SQL (SQLite sin percentile): fila del medio ordenada
+        median60 = None
+        if n:
+            median60 = conn.execute(
+                text(
+                    "SELECT move60_pp FROM ofi_signals WHERE created_at >= :cutoff "
+                    "ORDER BY move60_pp LIMIT 1 OFFSET :mid"
+                ),
+                {"cutoff": cutoff, "mid": n // 2},
+            ).scalar()
+    return {
+        "days_requested": days,
+        "cutoff": cutoff,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "signals_measured": n,
+        "move30_pp_avg": totals[1],
+        "move60_pp_avg": totals[2],
+        "move60_pp_min": totals[3],
+        "move60_pp_max": totals[4],
+        "move60_pp_median": round(median60, 4) if median60 is not None else None,
+        "followed_pressure": totals[5] or 0,  # move60 > 0 (momentum)
+        "zscore_abs_avg": totals[6],
+        "note": (
+            "Motor 4 (OFI) en SHADOW. moves en pp FIRMADOS desde la presion "
+            "(>0 momentum, <0 contrarian) — la mediana de move60_pp es la "
+            "pregunta del gate. zscore es adimensional; no hay filas con "
+            "|z| < z_min por diseno del detector (no es un agujero de datos). "
+            "Referencia Kalshi M8: p50 +3.18pp con n=130."
+        ),
+    }
+
+
+@app.get("/stats/spillover")
+async def stats_spillover(days: int = 30) -> dict[str, Any]:
+    """
+    Ventanas medidas del Motor 5 (spillover neg-risk, read-only). UNIDADES:
+    todo en `_pp`, follow FIRMADO desde la dirección esperada (inversa del
+    salto): follow > 0 = la hermana ajustó como la conservación de
+    probabilidad predice. La pregunta del gate: mediana de follow120_pp.
+    """
+    days = max(1, min(days, 120))
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d")
+    engine = get_engine()
+    with engine.connect() as conn:
+        totals = conn.execute(
+            text(
+                "SELECT COUNT(*), ROUND(AVG(trigger_move_pp), 4), "
+                "ROUND(AVG(follow60_pp), 4), ROUND(AVG(follow120_pp), 4), "
+                "SUM(CASE WHEN follow120_pp > 0 THEN 1 ELSE 0 END), "
+                "COUNT(DISTINCT neg_risk_market_id) "
+                "FROM spillover_windows WHERE created_at >= :cutoff"
+            ),
+            {"cutoff": cutoff},
+        ).one()
+        n = totals[0] or 0
+        median120 = None
+        if n:
+            median120 = conn.execute(
+                text(
+                    "SELECT follow120_pp FROM spillover_windows WHERE created_at >= :cutoff "
+                    "ORDER BY follow120_pp LIMIT 1 OFFSET :mid"
+                ),
+                {"cutoff": cutoff, "mid": n // 2},
+            ).scalar()
+    return {
+        "days_requested": days,
+        "cutoff": cutoff,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "windows_measured": n,
+        "trigger_move_pp_avg": totals[1],
+        "follow60_pp_avg": totals[2],
+        "follow120_pp_avg": totals[3],
+        "follow120_pp_median": round(median120, 4) if median120 is not None else None,
+        "followed_expectation": totals[4] or 0,
+        "groups_distinct": totals[5] or 0,
+        "note": (
+            "Motor 5 (spillover) en SHADOW. follow en pp FIRMADO desde la "
+            "direccion esperada (inversa del salto del trigger): >0 = la "
+            "hermana ajusto como la conservacion de probabilidad predice. "
+            "La mediana de follow120_pp es la pregunta del gate."
+        ),
+    }
+
+
 @app.get("/stats/consensus")
 async def stats_consensus(days: int = 30) -> dict[str, Any]:
     """
