@@ -3,6 +3,48 @@
 Fase activa: **F2 en shadow con GATE ROJO por causa de mercado** (no de código).
 Bot desplegado y capturando desde 2026-07-03. Cero órdenes reales.
 
+## Iteración 2026-07-30 (ter) — Motores 4 (OFI) y 5 (spillover) en SHADOW
+
+Plan completo en `docs/plan_motores.md`: cada motor se construye o descarta por
+el VEREDICTO que su tesis obtuvo en Kalshi con datos. M4 y M5 son los únicos
+con veredicto positivo/prometedor medibles en shadow puro. **M6 (line-move) NO
+se porta** (mudo un mes en Kalshi); MM y CLV diferidos a F3+.
+
+### Motor 4 — OFI (port del M8, "la única promesa viva": p50 +3.18pp)
+
+- EMBEBIDO en el data capture (mismo stream WS, costo marginal ~0; no aparece
+  en `motors` de /status — su señal de vida es `/stats/ofi` y el log
+  `Motor 4 (OFI) en SHADOW embebido`). Best-effort total (Lección 7).
+- Fuente adaptada: OFI clásico de top-of-book (Cont et al.) sobre las
+  transiciones que ya emite el OrderbookManager.
+- `zscore` en columna PROPIA (adimensional); moves en `_pp` firmados desde la
+  presión. La tabla no tiene |z| < z_min POR DISEÑO (umbral del detector, no
+  agujero de datos — la lectura equivocada de ese hueco fue el falso artefacto
+  del 07-28 en Kalshi).
+- Solo se persisten señales CON resultado (mid60 medido); book caído toda la
+  gracia = descarte contado. Baseline y pendientes con tope.
+- Activación: `MOTOR_4_OFI_ENABLED=true` + redeploy (independiente del universo).
+
+**Gate F2 del M4 (a priori):** ≥ 100 señales medidas Y mediana de `move60_pp`
+consistentemente ≠ 0 en ≥ 2 semanas (la referencia de Kalshi es p50 +3.18pp con
+n=130 — menos muestra que eso no cierra nada). Si la mediana ≈ 0: la tesis no
+replica en Polymarket → archivar, resultado válido y barato.
+
+### Motor 5 — Spillover neg-risk (port del M9)
+
+- Reusa los grupos neg-risk del discovery del M3 (cero fuentes nuevas).
+  Requiere `MARKET_DISCOVERY_SOURCE=neg_risk` + `MOTOR_5_SPILLOVER_ENABLED=true`.
+- Trigger: salto ≥ 5pp de una pata en 60s (cooldown por pata). Se mide el
+  follow-through de CADA hermana a T+60/T+120, FIRMADO desde la dirección
+  esperada (inversa del salto — conservación de probabilidad).
+- Fila persistida solo con la medición completa; topes en historia de mids y
+  pendientes; retención en el mismo commit.
+
+**Gate F2 del M5 (a priori):** ≥ 50 ventanas medidas Y mediana de
+`follow120_pp` > 0 sostenida (las hermanas ajustan tarde = hay retraso
+explotable). Mediana ≈ 0 = las hermanas ajustan al instante (mercado eficiente
+intra-grupo) → archivar.
+
 ## Iteración 2026-07-30 (bis) — Motor 2 = CONSENSO (The Odds API); neg-risk pasa a Motor 3
 
 Decisión del owner: el Motor 2 de Polybot usa **la API paga del proyecto (The

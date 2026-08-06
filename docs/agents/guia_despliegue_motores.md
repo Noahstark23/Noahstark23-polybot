@@ -1,4 +1,4 @@
-# Guía de despliegue — Motores 2 (consenso) y 3 (neg-risk) — para el agente web
+# Guía de despliegue — Motores 2 (consenso), 3 (neg-risk), 4 (OFI) y 5 (spillover) — para el agente web
 
 > **Cómo usar esto:** pegá este documento completo como PRIMER mensaje de la
 > sesión del agente del navegador, DESPUÉS de pegarle su contexto base
@@ -24,8 +24,8 @@ tiene endpoint). *Una estimación no es una medición.*
 3. **`:18081` es POLYBOT (paper, $0). `:18080` es el bot KALSHI (dinero real).**
    Si en tu análisis aparecen `ticker`, `sid`, centavos 0–100, "M8" u "ofi",
    estás mezclando bots — pará y re-verificá. Acá es `condition_id`, USDC
-   0.00–1.00, y los motores se llaman `motor_1_arbitrage`, `motor_2_consensus`
-   y `motor_3_neg_risk`. OJO: los DOS bots tienen un "motor 2 de consenso" con
+   0.00–1.00, y los motores se llaman `motor_1_arbitrage`, `motor_2_consensus`,
+   `motor_3_neg_risk`, `motor_4_ofi` y `motor_5_spillover`. OJO: los DOS bots tienen un "motor 2 de consenso" con
    la misma tesis y la misma API — el de Kalshi opera dinero real, el de acá
    es shadow. El puerto decide de cuál estás hablando.
 4. Números literales. Lo que no viste: "no accesible", nunca estimado.
@@ -143,14 +143,39 @@ consume, pero tampoco mide).
 
 ---
 
+## FASE E — Activación de los Motores 4 (OFI) y 5 (spillover)
+
+Prerrequisito: FASE A verde. M4 es independiente del universo
+(`MOTOR_4_OFI_ENABLED=true`); M5 requiere el discovery en `neg_risk`
+(`MOTOR_5_SPILLOVER_ENABLED=true`, típicamente junto a la FASE C).
+
+**E0 (T+2 min) — logs**: para M4 buscar `Motor 4 (OFI) en SHADOW embebido`;
+para M5, `Motor 5 (spillover neg-risk) en SHADOW`. OJO: **M4 NO aparece en
+`motors` de `/status`** — va embebido en el data capture; su señal de vida es
+el endpoint, no la lista.
+
+| # | GET | Esperado | Señal de alarma |
+|---|---|---|---|
+| E1 | `/stats/ofi` | 200; `signals_measured` va a tardar en moverse (baseline de 200 muestras por token + z>=3) — 0 el primer día puede ser normal | 0 señales tras 48h con WS activo → baseline nunca madura o el z_min es alto para este venue: reportar para diagnóstico |
+| E2 | `/stats/ofi?days=1` | mirar `move60_pp_median` — la PREGUNTA del gate. Referencia Kalshi: p50 +3.18pp | \|mediana\| enorme (>10pp) con pocas señales → books finos moviendo el mid: anotar, no celebrar |
+| E3 | `/stats/spillover` | 200; `windows_measured` crece solo si hay grupos Y saltos >=5pp | 0 ventanas con grupos activos y mercados moviéndose → el umbral de trigger puede ser alto: es un DATO del venue, reportarlo |
+| E4 (T+24h) | ambos | conteos del día + medianas | cualquier 500 → reportar body |
+
+Recordatorio de unidades para el reporte: `zscore` es ADIMENSIONAL (no es un
+%), los `_pp` son puntos de probabilidad. La ausencia de |z| < 3 en los datos
+del M4 es el umbral del detector, NO un agujero de captura — no la reportes
+como anomalía (ese falso artefacto ya nos pasó en Kalshi el 07-28).
+
+---
+
 ## Formato del reporte (tu output SIEMPRE termina así)
 
 ```
 ## REPORTE POLYBOT — [fecha/hora UTC]
-Campaña: despliegue Motores 2/3 — FASE [A|B|C|D]
+Campaña: despliegue Motores 2/3/4/5 — FASE [A|B|C|D|E]
 Fuente(s): [URLs exactas consultadas]
 Checklist:
-- [A1..D6 que corriste]: [esperado ✓ / dato literal si no]
+- [A1..E4 que corriste]: [esperado ✓ / dato literal si no]
 Hallazgos:
 - [números exactos, tal cual el JSON]
 Anomalías/sospechas: [o "ninguna"]

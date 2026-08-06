@@ -32,8 +32,10 @@ from src.db.models import (
     FunnelSnapshot,
     MarketSnapshot,
     MultiEdgeWindow,
+    OfiSignalRow,
     OrderbookEvent,
     RiskEvent,
+    SpilloverWindow,
 )
 from src.utils.config import Settings, get_settings
 
@@ -46,6 +48,8 @@ RETENTION_TABLES = [
     # acá en el mismo commit en que se crea, no cuando explota).
     (MultiEdgeWindow, MultiEdgeWindow.detected_at, "RETENTION_MULTI_EDGE_WINDOWS_DAYS"),
     (ConsensusSignal, ConsensusSignal.detected_at, "RETENTION_CONSENSUS_SIGNALS_DAYS"),
+    (OfiSignalRow, OfiSignalRow.created_at, "RETENTION_OFI_SIGNALS_DAYS"),
+    (SpilloverWindow, SpilloverWindow.created_at, "RETENTION_SPILLOVER_WINDOWS_DAYS"),
 ]
 
 

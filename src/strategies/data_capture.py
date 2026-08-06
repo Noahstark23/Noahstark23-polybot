@@ -78,6 +78,33 @@ class DataCaptureService:
         self.watched: dict[str, WatchedMarket] = {}  # condition_id -> market
         self._event_buffer: list[dict] = []
         self._buffer_lock = asyncio.Lock()
+        # Motor 4 (OFI shadow) va EMBEBIDO acá — se alimenta del mismo stream,
+        # igual que el M8 de Kalshi vivía en su feed. Best-effort total
+        # (Lección 7): un fallo del shadow JAMÁS rompe la captura.
+        self._ofi_shadow = None
+        if self.settings.MOTOR_4_OFI_ENABLED:
+            from src.motor_4_ofi.shadow import OfiShadow
+
+            self._ofi_shadow = OfiShadow(
+                mid_fn=self._mid_of,
+                window_sec=self.settings.MOTOR_4_WINDOW_SEC,
+                z_min=self.settings.MOTOR_4_Z_MIN,
+                min_baseline=self.settings.MOTOR_4_MIN_BASELINE,
+                cooldown_sec=self.settings.MOTOR_4_COOLDOWN_SEC,
+            )
+            logger.info(
+                f"Motor 4 (OFI) en SHADOW embebido en el capture — "
+                f"z_min={self.settings.MOTOR_4_Z_MIN}, "
+                f"baseline>={self.settings.MOTOR_4_MIN_BASELINE}, "
+                f"cooldown={self.settings.MOTOR_4_COOLDOWN_SEC}s (NO ejecuta)"
+            )
+
+    def _mid_of(self, token_id: str) -> float | None:
+        """Mid del token si el libro está sano (synced y con ambas puntas)."""
+        book = self.books.get_book(token_id)
+        if book is None or not book.synced or book.best_bid is None or book.best_ask is None:
+            return None
+        return (book.best_bid.price + book.best_ask.price) / 2.0
 
     # ==================================================
     # Descubrimiento de mercados
@@ -261,6 +288,20 @@ class DataCaptureService:
         summary = self.books.process_event(event)
         if summary is None:
             return
+        if self._ofi_shadow is not None:
+            # Best-effort (el shadow ya traga sus propias excepciones): la
+            # transición de top-of-book alimenta el OFI del Motor 4.
+            from src.motor_4_ofi.detector import TopOfBook
+
+            self._ofi_shadow.observe_top(
+                summary["token_id"],
+                TopOfBook(
+                    bid=summary["best_bid"],
+                    bid_size=summary["bid_depth"] or 0.0,
+                    ask=summary["best_ask"],
+                    ask_size=summary["ask_depth"] or 0.0,
+                ),
+            )
         async with self._buffer_lock:
             self._event_buffer.append(summary)
             if len(self._event_buffer) >= 200:

@@ -123,6 +123,21 @@ class Settings(BaseSettings):
     MOTOR_3_NEG_RISK_ENABLED: bool = False
     MOTOR_3_MIN_LEGS: int = Field(3, ge=2, le=30)  # 2 patas neg-risk = un binario: territorio M1
     MOTOR_3_TICK_SECONDS: float = Field(5.0, gt=0.5, le=60)
+    # Motor 4: OFI shadow (port del M8 de Kalshi — "la única promesa viva" de su
+    # auditoría: p50 +3.18pp a T+60). Va EMBEBIDO en el data capture (se alimenta
+    # del stream WS que ya corre, costo marginal ~0). Default OFF.
+    MOTOR_4_OFI_ENABLED: bool = False
+    MOTOR_4_WINDOW_SEC: float = Field(60.0, gt=5, le=600)
+    MOTOR_4_Z_MIN: float = Field(3.0, gt=0.5, le=10)
+    MOTOR_4_MIN_BASELINE: int = Field(200, ge=30, le=1000)
+    MOTOR_4_COOLDOWN_SEC: float = Field(120.0, ge=0)
+    # Motor 5: spillover neg-risk (port del M9 de Kalshi). Requiere
+    # MARKET_DISCOVERY_SOURCE=neg_risk (mide follow-through entre hermanas de un
+    # grupo — sin grupos no hay qué medir). Default OFF.
+    MOTOR_5_SPILLOVER_ENABLED: bool = False
+    MOTOR_5_TRIGGER_MOVE_PP: float = Field(5.0, gt=0.5, le=50)  # salto que dispara, en pp
+    MOTOR_5_TRIGGER_WINDOW_SEC: float = Field(60.0, gt=5, le=600)
+    MOTOR_5_TICK_SECONDS: float = Field(5.0, gt=0.5, le=60)
     DATA_CAPTURE_ENABLED: bool = True
     ANALYST_ENABLED: bool = True  # analyst_loop (§7) — veredicto diario
     # Lista de condition_ids a observar (CSV). Vacío => descubrir vía get_markets.
@@ -147,6 +162,8 @@ class Settings(BaseSettings):
     RETENTION_FUNNEL_SNAPSHOTS_DAYS: int = Field(90, ge=7)
     RETENTION_MULTI_EDGE_WINDOWS_DAYS: int = Field(90, ge=7)
     RETENTION_CONSENSUS_SIGNALS_DAYS: int = Field(90, ge=7)
+    RETENTION_OFI_SIGNALS_DAYS: int = Field(90, ge=7)
+    RETENTION_SPILLOVER_WINDOWS_DAYS: int = Field(90, ge=7)
 
     # === The Odds API (Motor 2 — API PAGA, cuota mensual limitada) ===
     ODDS_API_KEY: str = ""  # secret en Coolify; JAMÁS en el repo ni en logs

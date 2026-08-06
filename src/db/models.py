@@ -198,6 +198,63 @@ class MultiEdgeWindow(SQLModel, table=True):
     detected_at: datetime = Field(default_factory=utc_now, index=True)
 
 
+class OfiSignalRow(SQLModel, table=True):
+    """
+    Señal de order flow imbalance del Motor 4 CON su medición (F2 shadow).
+
+    UNIDADES (una columna, una unidad — lección Kalshi 2026-07-28, donde el
+    z-score del M8 vivía en una columna llamada edge_pct y produjo "max
+    2678pp" y 1349 falsos sospechosos):
+      - `zscore` es ADIMENSIONAL y tiene su propia columna.
+      - `mid*` en fracción 0.0–1.0; `move*_pp` en puntos de probabilidad,
+        FIRMADOS desde la presión (>0 = momentum, <0 = contrarian).
+      - La tabla NO tiene valores de |zscore| < z_min: es el umbral del
+        detector funcionando, no un agujero de datos.
+    Solo se escriben señales CON resultado (mid60 medido).
+    """
+
+    __tablename__ = "ofi_signals"
+
+    id: int | None = Field(default=None, primary_key=True)
+    token_id: str = Field(index=True, max_length=100)
+    pressure: str = Field(max_length=5)  # "UP" | "DOWN"
+    ofi_contracts: float  # flujo neto de la ventana, en contratos
+    zscore: float  # adimensional
+    n_baseline: int
+    mid0: float
+    mid30: float | None = None
+    mid60: float
+    move30_pp: float  # firmado desde la presión
+    move60_pp: float
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class SpilloverWindow(SQLModel, table=True):
+    """
+    Ventana de spillover del Motor 5 (F2 shadow): una pata de un grupo
+    neg-risk saltó y se mide el follow-through de UNA hermana.
+
+    Tesis (M9 de Kalshi): en un evento multi-outcome las probabilidades se
+    conservan — un salto de +X pp en una pata predice ajuste opuesto en las
+    hermanas. El follow va FIRMADO desde la dirección ESPERADA (inversa del
+    salto): follow > 0 = la hermana ajustó como la conservación predice.
+
+    UNIDADES: todo en `_pp` (puntos de probabilidad). Sin columnas ambiguas.
+    """
+
+    __tablename__ = "spillover_windows"
+
+    id: int | None = Field(default=None, primary_key=True)
+    neg_risk_market_id: str = Field(index=True, max_length=100)
+    trigger_condition_id: str = Field(max_length=100)
+    sibling_condition_id: str = Field(index=True, max_length=100)
+    trigger_move_pp: float  # el salto que disparó (firmado, pp)
+    sibling_mid0: float  # 0.0-1.0 al momento del trigger
+    follow60_pp: float | None = None  # firmado desde la dirección esperada
+    follow120_pp: float  # ídem (la fila se escribe recién con esta medición)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
 class ConsensusSignal(SQLModel, table=True):
     """
     Señal del Motor 2 (consenso de sportsbooks vía The Odds API, F2 shadow).
